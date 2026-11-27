@@ -1,0 +1,3535 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>游戏原型交互演示 - 闯关主链路</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: #0f172a;
+      color: #f8fafc;
+      margin: 0;
+      min-height: 100vh;
+    }
+    .phone-frame {
+      width: 100%;
+      max-width: 410px;
+      height: 760px;
+      max-height: 92vh;
+      background: #1e293b;
+      border: 6px solid #334155;
+      border-radius: 32px;
+      overflow: hidden;
+      position: relative;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+      display: flex;
+      flex-direction: column;
+    }
+    @media (max-width: 480px) {
+      .phone-frame {
+        max-width: 100%;
+        height: 100vh;
+        max-height: 100vh;
+        border: none;
+        border-radius: 0;
+      }
+    }
+    .lobby-bg {
+      background: linear-gradient(180deg, #3187a2 0%, #2a7891 45%, #23677d 100%);
+    }
+    .chapter-bg {
+      background: linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%);
+    }
+    @keyframes floatSlow {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-4px); }
+    }
+    @keyframes pulseGlow {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.7); transform: scale(1); }
+      50% { box-shadow: 0 0 0 8px rgba(249, 115, 22, 0); transform: scale(1.04); }
+    }
+    @keyframes dmgFloat {
+      0% { opacity: 1; transform: translateY(0) scale(1); }
+      100% { opacity: 0; transform: translateY(-28px) scale(1.15); }
+    }
+    .animate-float { animation: floatSlow 3.5s ease-in-out infinite; }
+    .animate-cta { animation: pulseGlow 2s infinite; }
+    .dmg-pop { animation: dmgFloat 0.75s ease-out forwards; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  </style>
+</head>
+<body class="flex flex-col lg:flex-row items-center justify-center gap-6 p-2 sm:p-4">
+
+  <!-- 手机原型主视图 -->
+  <div id="phone" class="phone-frame">
+    <!-- 动态视图容器 -->
+    <div id="screen-root" class="relative flex-1 flex flex-col overflow-hidden"></div>
+
+    <!-- 全局轻提示 Toast -->
+    <div id="toast-container" class="pointer-events-none absolute top-14 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2 w-11/12"></div>
+
+    <!-- 全局弹窗容器 -->
+    <div id="modal-root" class="hidden absolute inset-0 z-40 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-4"></div>
+  </div>
+
+  <!-- 策划演示控制面板（桌面端右侧 / 移动端底部） -->
+  <div class="w-full max-w-[410px] lg:max-w-[300px] bg-slate-800/90 border border-slate-700 rounded-2xl p-4 text-xs text-slate-300 shadow-xl">
+    <div class="flex items-center justify-between border-b border-slate-700 pb-2.5 mb-3">
+      <div>
+        <h2 class="text-sm font-bold text-white">策划交互演示控制台</h2>
+        <p class="text-[11px] text-slate-400 mt-0.5">用于快速测试各流程节点与状态</p>
+      </div>
+      <button id="btn-reset-demo" class="px-2.5 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg font-medium transition">重置原型</button>
+    </div>
+
+    <div class="space-y-3">
+      <div>
+        <div class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">当前所在界面</div>
+        <div id="debug-route" class="px-2.5 py-1.5 bg-slate-900/80 rounded-lg text-amber-400 font-semibold">大厅（战斗）</div>
+      </div>
+
+      <div>
+        <div class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">战斗调试快捷触发（仅战斗中生效）</div>
+        <div class="grid grid-cols-2 gap-1.5">
+          <button id="dbg-levelup" class="px-2 py-1.5 bg-indigo-600/80 hover:bg-indigo-500 text-white rounded-lg font-medium transition disabled:opacity-40">触发升级选技能</button>
+          <button id="dbg-win" class="px-2 py-1.5 bg-emerald-600/80 hover:bg-emerald-500 text-white rounded-lg font-medium transition disabled:opacity-40">模拟挑战成功</button>
+          <button id="dbg-lose" class="px-2 py-1.5 bg-rose-600/80 hover:bg-rose-500 text-white rounded-lg font-medium transition disabled:opacity-40">模拟挑战失败</button>
+          <button id="dbg-toggle-month" class="px-2 py-1.5 bg-amber-600/80 hover:bg-amber-500 text-white rounded-lg font-medium transition">切换月卡状态</button>
+          <button id="dbg-pk-receive" class="px-2 py-1.5 bg-sky-600/80 hover:bg-sky-500 text-white rounded-lg font-medium transition disabled:opacity-40">模拟收到PK邀请</button>
+          <button id="dbg-pool-die" class="px-2 py-1.5 bg-purple-600/80 hover:bg-purple-500 text-white rounded-lg font-medium transition disabled:opacity-40">模拟阵亡复活</button>
+          <button id="dbg-toggle-gold" class="col-span-2 px-2 py-1.5 bg-teal-600/80 hover:bg-teal-500 text-white rounded-lg font-medium transition">切换金币充足/不足（当前：充足）</button>
+        </div>
+      </div>
+
+      <div class="bg-slate-900/60 rounded-xl p-2.5 space-y-1 text-[11px] text-slate-400 leading-relaxed">
+        <div class="text-slate-200 font-semibold">已打通流程提示：</div>
+        <div>1. 大厅点<span class="text-amber-400">「挑战」</span>直达最新关卡战斗；点<span class="text-amber-400">「闯关场」</span>城堡进章节列表。</div>
+        <div>2. 战斗中点<span class="text-sky-400">「开关」</span>展开头像控停火；点下方英雄格看<span class="text-sky-400">「词条1~3」</span>；右下角切<span class="text-sky-400">100/200/300</span>炮口。</div>
+        <div>3. 失败后<span class="text-rose-400">40%奖励</span>存入关卡宝箱，并点亮小关卡<span class="text-rose-400">「快捷前往」红点</span>。</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ==================== 工具与格式化 ====================
+    const fmtNum = (n) => Number(n || 0).toLocaleString('en-US');
+    const fmtTimer = (sec) => {
+      const s = Math.max(0, Math.floor(sec));
+      const h = Math.floor(s / 3600);
+      const m = Math.floor((s % 3600) / 60);
+      const r = s % 60;
+      if (h > 0) return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(r).padStart(2,'0')}`;
+      return `${String(m).padStart(2,'0')}:${String(r).padStart(2,'0')}`;
+    };
+
+    // ==================== 初始状态工厂 ====================
+    function createInitialState() {
+      return {
+        screen: 'lobby', // 'lobby' | 'chapters' | 'substages' | 'battle' | 'placeholder'
+        mode: 'stage', // 'stage' (闯关场) | 'dungeon' (副本场)
+        placeholderTitle: '',
+        placeholderFrom: 'lobby',
+        lobbyTab: 'battle',
+        activitiesExpanded: false,
+        activityTimers: [5399, 7316, 9233, 11150, 13067, 14900, 16800],
+        monthCardActive: true,
+        gold: 999999999,
+        redGem: 999999999,
+        dungeonTickets: 2,
+        poolField: {
+          room: 'mid',
+          records: {
+            mid: [
+              { name: '寂寞的雪糕', time: '2026-11-26 17:45:10', target: '击破扭蛋奖池', amount: 99999999, best: true },
+              { name: '菠萝五个字', time: '2026-11-26 16:20:05', target: '征战PK连胜', amount: 64200000, best: false },
+              { name: '清风徐来', time: '2026-11-26 14:11:33', target: '击破扭蛋奖池', amount: 42150000, best: false }
+            ],
+            high: [
+              { name: '寂寞的雪糕', time: '2026-11-26 18:10:22', target: '高级扭蛋奖池', amount: 199999999, best: true },
+              { name: '至尊王者一号', time: '2026-11-26 15:30:18', target: '征战PK五连胜', amount: 120000000, best: false }
+            ]
+          }
+        },
+        arena: {
+          seasonTimeLeft: 204839,
+          points: 1020,
+          tierIndex: 2, // 0:青铜II, 1:青铜I, 2:白银III, 3:白银II, 4:白银I, 5:黄金III, 6:黄金II, 7:黄金I
+          tiers: [
+            { id: 0, name: '青铜II阶', minPts: 0, maxPts: 500, icon: '🥉', reward: [{ name: '竞技币', qty: 1000, icon: '🪙' }, { name: '随机经验', qty: 200, icon: '🟣' }], buff: '', claimed: true },
+            { id: 1, name: '青铜I阶', minPts: 500, maxPts: 1000, icon: '🥉', reward: [{ name: '竞技币', qty: 1000, icon: '🪙' }, { name: '随机经验', qty: 200, icon: '🟣' }], buff: '', claimed: true },
+            { id: 2, name: '白银III阶', minPts: 1000, maxPts: 1500, icon: '🥈', reward: [{ name: '钻石', qty: 150, icon: '💎' }, { name: '随机装备', qty: 1, icon: '🥾' }, { name: '竞技币', qty: 2000, icon: '🪙' }], buff: '竞技场挂机效率+10.0%', claimed: false },
+            { id: 3, name: '白银II阶', minPts: 1500, maxPts: 2000, icon: '🥈', reward: [{ name: '竞技币', qty: 2000, icon: '🪙' }, { name: '随机经验', qty: 300, icon: '🟣' }], buff: '', claimed: false },
+            { id: 4, name: '白银I阶', minPts: 2000, maxPts: 2500, icon: '🥈', reward: [{ name: '竞技币', qty: 2500, icon: '🪙' }, { name: '天赋石', qty: 20, icon: '🔮' }], buff: '', claimed: false },
+            { id: 5, name: '黄金III阶', minPts: 2500, maxPts: 3000, icon: '🥇', reward: [{ name: '钻石', qty: 300, icon: '💎' }, { name: '竞技币', qty: 3000, icon: '🪙' }], buff: '竞技场挂机效率+20.0%', claimed: false },
+            { id: 6, name: '黄金II阶', minPts: 3000, maxPts: 3500, icon: '🥇', reward: [{ name: '竞技币', qty: 3500, icon: '🪙' }, { name: '黄金罗盘', qty: 1, icon: '🧭' }], buff: '', claimed: false },
+            { id: 7, name: '黄金I阶', minPts: 3500, maxPts: 4000, icon: '🥇', reward: [{ name: '钻石', qty: 500, icon: '💎' }, { name: '竞技币', qty: 5000, icon: '🪙' }], buff: '竞技场挂机效率+30.0%', claimed: false }
+          ],
+          coins: 48269,
+          selectedRoom: 'mid',
+          poolRoom: 'mid',
+          poolRecords: {
+            mid: [
+              { name: '菠萝五个字', time: '2026-11-26 16:10:47', target: '竞技中级场连胜', amount: 119999999, best: true },
+              { name: '清风徐来', time: '2026-11-26 15:42:18', target: '击败寂寞的雪糕', amount: 85420000, best: false },
+              { name: '剑指苍穹', time: '2026-11-26 14:20:05', target: '击败深渊领主', amount: 64200000, best: false },
+              { name: '星辰大海', time: '2026-11-26 13:05:31', target: '竞技中级场暴击', amount: 42150000, best: false },
+              { name: '烈焰战神', time: '2026-11-26 11:48:12', target: '击败暗夜猎手', amount: 28900000, best: false }
+            ],
+            high: [
+              { name: '至尊王者一号', time: '2026-11-26 16:22:10', target: '竞技高级场五连胜', amount: 120000000, best: true },
+              { name: '无双剑圣', time: '2026-11-26 15:11:04', target: '击败巅峰守卫', amount: 98500000, best: false },
+              { name: '苍穹破晓', time: '2026-11-26 13:55:49', target: '竞技高级场暴击', amount: 76300000, best: false },
+              { name: '雷霆万钧', time: '2026-11-26 12:18:33', target: '击败深渊领主', amount: 54100000, best: false }
+            ]
+          },
+          shopItems: [
+            { id: 's1', name: '装备锻造书', qty: 10, icon: '📜', price: 1500, limit: 10, maxLimit: 10, reqTier: 0, quality: 'blue' },
+            { id: 's2', name: '随机职业经验', qty: 30, icon: '🟣', price: 1500, limit: 10, maxLimit: 10, reqTier: 0, quality: 'blue' },
+            { id: 's3', name: '精灵木', qty: 10, icon: '🪵', price: 1800, limit: 10, maxLimit: 10, reqTier: 2, quality: 'blue' },
+            { id: 's4', name: '白银罗盘', qty: 1, icon: '🧭', price: 2200, limit: 10, maxLimit: 10, reqTier: 3, quality: 'blue' },
+            { id: 's5', name: '天赋石', qty: 10, icon: '💎', price: 2000, limit: 10, maxLimit: 10, reqTier: 4, quality: 'blue' },
+            { id: 's6', name: '黄金罗盘', qty: 1, icon: '🧭', price: 3500, limit: 2, maxLimit: 2, reqTier: 6, quality: 'purple' },
+            { id: 's7', name: '金币', qty: 1000, icon: '🪙', price: 1200, limit: 10, maxLimit: 10, reqTier: 7, quality: 'blue' },
+            { id: 's8', name: '炼器石', qty: 30, icon: '🪨', price: 2500, limit: 20, maxLimit: 20, reqTier: 7, quality: 'blue' },
+            { id: 's9', name: '高级天赋石', qty: 10, icon: '🔮', price: 3000, limit: 10, maxLimit: 10, reqTier: 7, quality: 'purple' }
+          ],
+          history: [
+            { room: '中级场', date: '7.05', win: true, oppName: '菠萝五个字', oppPower: '99w', delta: 30 },
+            { room: '中级场', date: '7.05', win: true, oppName: '清风徐来', oppPower: '85w', delta: 30 },
+            { room: '中级场', date: '7.05', win: true, oppName: '剑指苍穹', oppPower: '76w', delta: 20 },
+            { room: '中级场', date: '7.05', win: true, oppName: '星辰大海', oppPower: '62w', delta: 10 },
+            { room: '中级场', date: '7.05', win: false, oppName: '寂寞的雪糕', oppPower: '99w', delta: -50 },
+            { room: '中级场', date: '7.05', win: false, oppName: '暗夜猎手', oppPower: '105w', delta: -50 },
+            { room: '中级场', date: '7.04', win: true, oppName: '烈焰战神', oppPower: '58w', delta: 25 }
+          ],
+          historyPage: 1
+        },
+        activePreset: 0, // 0, 1, 2
+        presets: [
+          { name: '预设1', power: 2159, heroes: ['wind', 'fire', 'ice', 'thunder'] },
+          { name: '预设2', power: 3420, heroes: ['fire', 'fire', 'thunder', 'ice'] },
+          { name: '预设3', power: 1980, heroes: ['wind', 'ice', 'wind', 'thunder'] }
+        ],
+        heroMeta: {
+          wind:    { id: 'wind',    name: '风灵', color: '#4ade80', hat: '#22c55e', symbol: '🍃', baseDmg: 120, range: '中程扇形 (350)', rangeSize: 'w-44 h-44' },
+          fire:    { id: 'fire',    name: '烈焰', color: '#fb7185', hat: '#ef4444', symbol: '🔥', baseDmg: 165, range: '近战范围 (220)', rangeSize: 'w-32 h-32' },
+          ice:     { id: 'ice',     name: '冰瀑', color: '#60a5fa', hat: '#3b82f6', symbol: '❄️', baseDmg: 135, range: '远程直线 (450)', rangeSize: 'w-52 h-52' },
+          thunder: { id: 'thunder', name: '雷霆', color: '#facc15', hat: '#eab308', symbol: '⚡', baseDmg: 150, range: '全屏连锁 (500)', rangeSize: 'w-60 h-60' }
+        },
+        chapters: [
+          { id: 'beast', name: '野兽岛', unlocked: true, chests: 9, atkRange: '100-500', goldRange: '100-500', bg: 'from-emerald-700 to-teal-900' },
+          { id: 'abyss', name: '深渊巨坑', unlocked: false, chests: 9, atkRange: '500-1,200', goldRange: '500-1,200', bg: 'from-purple-800 to-slate-900' },
+          { id: 'canyon', name: '亡者峡谷', unlocked: false, chests: 9, atkRange: '1,200-3,000', goldRange: '1,200-3,000', bg: 'from-rose-900 to-slate-950' }
+        ],
+        selectedChapterId: 'beast',
+        substages: [
+          { id: '1-1', chapterId: 'beast', num: 1, name: '野兽岛-1', title: '第一关', unlocked: true, cleared: true, recPower: 1200, storedGem: 4800, sweepable: true, isBoss: false },
+          { id: '1-2', chapterId: 'beast', num: 2, name: '野兽岛-2', title: '第二关', unlocked: true, cleared: false, recPower: 1800, storedGem: 0, sweepable: false, isBoss: false },
+          { id: '1-3', chapterId: 'beast', num: 3, name: '野兽岛-3', title: '第三关', unlocked: false, cleared: false, recPower: 80000, storedGem: 0, sweepable: false, isBoss: false },
+          { id: '1-4', chapterId: 'beast', num: 4, name: '野兽岛-4', title: '第四关', unlocked: false, cleared: false, recPower: 90000, storedGem: 0, sweepable: false, isBoss: false },
+          { id: '1-5', chapterId: 'beast', num: 5, name: '野兽岛-5', title: '第五关', unlocked: false, cleared: false, recPower: 100000, storedGem: 0, sweepable: false, isBoss: true }
+        ],
+        dungeonSubstages: [
+          { id: 'd-1-1', chapterId: 'beast', num: 1, name: '野兽岛-1', title: '第一关', unlocked: true, cleared: true, recPower: 1200, storedGem: 0, sweepable: false, isBoss: false },
+          { id: 'd-1-2', chapterId: 'beast', num: 2, name: '野兽岛-2', title: '第二关', unlocked: true, cleared: false, recPower: 1800, storedGem: 0, sweepable: false, isBoss: false },
+          { id: 'd-1-3', chapterId: 'beast', num: 3, name: '野兽岛-3', title: '第三关', unlocked: false, cleared: false, recPower: 80000, storedGem: 0, sweepable: false, isBoss: false },
+          { id: 'd-1-4', chapterId: 'beast', num: 4, name: '野兽岛-4', title: '第四关', unlocked: false, cleared: false, recPower: 90000, storedGem: 0, sweepable: false, isBoss: false },
+          { id: 'd-1-5', chapterId: 'beast', num: 5, name: '野兽岛-5', title: '第五关', unlocked: false, cleared: false, recPower: 100000, storedGem: 0, sweepable: false, isBoss: true }
+        ],
+        quickGoOpen: false,
+        battle: null,
+        modal: null
+      };
+    }
+
+    let state = createInitialState();
+
+    // ==================== 定时器管理 ====================
+    let mainTickInterval = null;
+    let modalCountdownInterval = null;
+    let arenaMatchTimeout = null;
+
+    function clearModalCountdown() {
+      if (modalCountdownInterval) {
+        clearInterval(modalCountdownInterval);
+        modalCountdownInterval = null;
+      }
+      if (arenaMatchTimeout) {
+        clearTimeout(arenaMatchTimeout);
+        arenaMatchTimeout = null;
+      }
+    }
+
+    function showToast(msg, tone = 'dark') {
+      const container = document.getElementById('toast-container');
+      const el = document.createElement('div');
+      const colors = tone === 'warn' ? 'bg-rose-600/95 text-white border-rose-400'
+        : tone === 'success' ? 'bg-emerald-600/95 text-white border-emerald-400'
+        : 'bg-slate-900/95 text-slate-100 border-slate-600';
+      el.className = `${colors} border px-3.5 py-2 rounded-xl text-xs font-medium shadow-lg text-center transition-all duration-300`;
+      el.textContent = msg;
+      container.appendChild(el);
+      setTimeout(() => {
+        el.style.opacity = '0';
+        el.style.transform = 'translateY(-6px)';
+        setTimeout(() => el.remove(), 300);
+      }, 2000);
+    }
+
+    // ==================== 辅助计算 ====================
+    function getTotalStoredGems() {
+      return state.substages.reduce((acc, s) => acc + (s.storedGem || 0), 0);
+    }
+
+    function getModeSubstages(mode = state.mode) {
+      return mode === 'dungeon' ? state.dungeonSubstages : state.substages;
+    }
+
+    function getLatestChallengeStage(mode = 'stage') {
+      const list = getModeSubstages(mode);
+      const unlocked = list.filter(s => s.unlocked);
+      const nextUnclear = unlocked.find(s => !s.cleared);
+      return nextUnclear || unlocked[unlocked.length - 1] || list[0];
+    }
+
+    function getQuickGoList() {
+      return state.substages.filter(s => s.storedGem > 0 || s.sweepable);
+    }
+
+    // ==================== 战斗初始化与循环 ====================
+    function startBattle(substageId, mode = state.mode) {
+      if (mode === 'dungeon') {
+        if (state.dungeonTickets < 1) {
+          showToast('副本券不足', 'warn');
+          state.modal = { type: 'ticket_source' };
+          renderModal();
+          return;
+        }
+        state.dungeonTickets -= 1;
+      }
+      state.mode = mode;
+      const stage = getModeSubstages(mode).find(s => s.id === substageId) || getLatestChallengeStage(mode);
+      const preset = state.presets[state.activePreset];
+      const battleHeroes = preset.heroes.map((hKey, idx) => {
+        const meta = state.heroMeta[hKey];
+        return {
+          slot: idx + 1,
+          key: hKey,
+          name: meta.name,
+          color: meta.color,
+          hat: meta.hat,
+          symbol: meta.symbol,
+          level: idx === 0 ? 3 : 1,
+          enabled: true,
+          dmg: 0,
+          affixes: idx === 0 ? ['风刃连射 +20%', '攻速提升 15%'] : ['基础射击']
+        };
+      });
+
+      state.battle = {
+        mode: mode,
+        stageId: stage.id,
+        stageName: stage.name,
+        stageNum: stage.num,
+        paused: false,
+        wave: 1,
+        maxWave: 10,
+        timeLeft: 159,
+        level: 1,
+        exp: 0,
+        expMax: 100,
+        hp: 2800,
+        hpMax: 2800,
+        rewardGem: 1200,
+        bonusGem: 5000,
+        cannonTier: 100, // 100 | 200 | 300
+        switchListOpen: false,
+        statsOpen: false,
+        activeAffixSlot: null, // 1..4 or null
+        diceCd: 0,
+        skillCd: 0,
+        freeRefreshLeft: 10,
+        freeRefreshMax: 10,
+        monsterHp: 100,
+        monsterMaxHp: 100,
+        loopStage: false
+      };
+      state.battle.heroes = battleHeroes;
+      state.screen = 'battle';
+      state.modal = null;
+      clearModalCountdown();
+      render();
+    }
+
+    // 主循环（1秒/次，用于大厅倒计时与战斗模拟）
+    function startMainLoop() {
+      if (mainTickInterval) clearInterval(mainTickInterval);
+      mainTickInterval = setInterval(() => {
+        // 大厅活动与竞技场赛季倒计时
+        state.activityTimers = state.activityTimers.map(t => (t > 0 ? t - 1 : 3600));
+        if (state.arena.seasonTimeLeft > 0) state.arena.seasonTimeLeft--;
+
+        if (state.screen === 'battle' && state.battle && !state.battle.paused && !state.modal) {
+          const b = state.battle;
+          // 技能CD
+          if (b.diceCd > 0) b.diceCd--;
+          if (b.skillCd > 0) b.skillCd--;
+
+          // 倒计时
+          if (b.timeLeft > 0) b.timeLeft--;
+
+          // 英雄自动攻击
+          let tickDmg = 0;
+          const mult = b.cannonTier / 100;
+          b.heroes.forEach(h => {
+            if (h.enabled) {
+              const meta = state.heroMeta[h.key];
+              const d = Math.round((meta.baseDmg + h.level * 35) * mult * (0.9 + Math.random() * 0.25));
+              h.dmg += d;
+              tickDmg += d;
+              if (b.mode !== 'dungeon' && state.gold >= b.cannonTier) {
+                state.gold -= Math.round(b.cannonTier * 0.25);
+              }
+            }
+          });
+
+          if (tickDmg > 0) {
+            if (b.mode !== 'dungeon') b.rewardGem += Math.round(tickDmg * 0.4);
+            b.monsterHp -= Math.max(12, Math.round(tickDmg / 45));
+            spawnBattleDmgPop(tickDmg);
+          }
+
+          if (b.monsterHp <= 0) {
+            b.monsterHp = b.monsterMaxHp;
+            if (b.wave < b.maxWave) {
+              b.wave++;
+            } else {
+              triggerVictory();
+              return;
+            }
+          }
+
+          // 经验增长触发三选一
+          b.exp += 22;
+          if (b.exp >= b.expMax) {
+            b.exp = 0;
+            b.level++;
+            b.expMax = Math.round(b.expMax * 1.15);
+            openSkillChoiceModal();
+            return;
+          }
+
+          renderBattleDynamicParts();
+        } else if (state.screen === 'arena_battle' && state.battle && !state.battle.paused && !state.modal) {
+          const b = state.battle;
+          if (b.diceCd > 0) b.diceCd--;
+          if (b.skillCd > 0) b.skillCd--;
+
+          let tickDmg = 0;
+          const mult = b.cannonTier / 100;
+          b.heroes.forEach(h => {
+            if (h.enabled) {
+              const meta = state.heroMeta[h.key];
+              const d = Math.round((meta.baseDmg + h.level * 35) * mult * (0.9 + Math.random() * 0.25));
+              h.dmg += d;
+              tickDmg += d;
+            }
+          });
+          if (tickDmg > 0) {
+            b.oppHp = Math.max(0, b.oppHp - Math.round(tickDmg * 0.08));
+            b.poolGold += Math.round(tickDmg * 1.2);
+          }
+          // 敌方反击模拟
+          b.hp = Math.max(0, b.hp - Math.round(18 + Math.random() * 20));
+          b.exp += 22;
+          if (b.exp >= b.expMax) {
+            b.exp = 0;
+            b.level++;
+            b.expMax = Math.round(b.expMax * 1.15);
+            openSkillChoiceModal();
+            return;
+          }
+          if (b.oppHp <= 0) {
+            triggerArenaSettlement(true);
+            return;
+          }
+          if (b.hp <= 0) {
+            triggerArenaSettlement(false);
+            return;
+          }
+          renderArenaBattleDynamicParts();
+        } else if (state.screen === 'pool_battle' && state.battle && !state.battle.paused && !state.modal) {
+          const b = state.battle;
+          if (b.skillCd > 0) b.skillCd--;
+
+          let tickDmg = 0;
+          const mult = (b.cannonTier / 100) * (b.rage ? 1.5 : 1);
+          b.heroes.forEach(h => {
+            if (h.enabled) {
+              const meta = state.heroMeta[h.key];
+              const d = Math.round((meta.baseDmg + h.level * 35) * mult * (0.9 + Math.random() * 0.25));
+              h.dmg += d;
+              tickDmg += d;
+            }
+          });
+          if (tickDmg > 0) {
+            b.poolGold += Math.round(tickDmg * 1.1);
+            b.poolGem += Math.round(tickDmg * 0.3);
+          }
+
+          if (b.pkActive) {
+            b.myPkDmg += Math.max(80, Math.round(tickDmg * 0.6));
+            b.oppPkDmg += Math.round(140 + Math.random() * 140);
+            b.pkTimeLeft--;
+            if (b.pkTimeLeft <= 0) {
+              triggerPoolPkSettlement(b.myPkDmg >= b.oppPkDmg);
+              return;
+            }
+          } else {
+            // 常规战斗掉血模拟
+            b.hp = Math.max(0, b.hp - Math.round(12 + Math.random() * 15));
+            if (b.hp <= 0) {
+              openPoolReviveModal();
+              return;
+            }
+          }
+          renderPoolBattleDynamicParts();
+        } else if (state.screen === 'lobby') {
+          // 局部刷新大厅倒计时避免整页重绘闪烁
+          document.querySelectorAll('[data-act-timer]').forEach(el => {
+            const idx = Number(el.getAttribute('data-act-timer'));
+            el.textContent = fmtTimer(state.activityTimers[idx]);
+          });
+        }
+      }, 1000);
+    }
+
+    function spawnBattleDmgPop(val) {
+      const arena = document.getElementById('battle-arena-fx');
+      if (!arena) return;
+      const pop = document.createElement('div');
+      pop.className = 'dmg-pop absolute text-xs font-extrabold text-amber-300 drop-shadow pointer-events-none';
+      pop.style.left = `${30 + Math.random() * 40}%`;
+      pop.style.top = `${30 + Math.random() * 25}%`;
+      pop.textContent = `-${fmtNum(val)}`;
+      arena.appendChild(pop);
+      setTimeout(() => pop.remove(), 750);
+    }
+
+    // ==================== 词条三选一弹窗 ====================
+    const AFFIX_POOL = [
+      { title: '召唤【烈焰】', desc: '解锁或强化烈焰英雄参战', targetHero: 'fire', affix: '烈焰觉醒 +25% 伤害', isSummon: true },
+      { title: '【烈焰狂暴】', desc: '攻击伤害提升 30%', targetHero: 'fire', affix: '烈焰狂暴：攻击 +30%', isSummon: false },
+      { title: '召唤【冰瀑海】', desc: '释放冰霜领域减速并造成范围伤害', targetHero: 'ice', affix: '冰瀑海：范围减速', isSummon: true },
+      { title: '【雷霆连锁】', desc: '攻击额外弹射 2 个目标', targetHero: 'thunder', affix: '雷霆连锁 +2 目标', isSummon: false },
+      { title: '【疾风连射】', desc: '全队攻击速度提升 20%', targetHero: 'wind', affix: '疾风连射：攻速 +20%', isSummon: false },
+      { title: '【暴击强化】', desc: '暴击率提升 15%，暴伤 +40%', targetHero: 'wind', affix: '暴击率 +15%', isSummon: false }
+    ];
+
+    function rollThreeAffixes() {
+      const shuffled = [...AFFIX_POOL].sort(() => Math.random() - 0.5);
+      return shuffled.slice(0, 3);
+    }
+
+    function openSkillChoiceModal() {
+      if (!state.battle) return;
+      state.battle.paused = true;
+      clearModalCountdown();
+      state.modal = {
+        type: 'skill_choice',
+        cards: rollThreeAffixes(),
+        countdown: 10
+      };
+      renderModal();
+
+      modalCountdownInterval = setInterval(() => {
+        if (!state.modal || state.modal.type !== 'skill_choice') {
+          clearModalCountdown();
+          return;
+        }
+        state.modal.countdown--;
+        const cdEl = document.getElementById('skill-auto-cd');
+        if (cdEl) cdEl.textContent = `${state.modal.countdown}s后自动为您选择`;
+        if (state.modal.countdown <= 0) {
+          clearModalCountdown();
+          selectSkillCard(0); // 默认选择推荐卡（第1张带“荐”）
+        }
+      }, 1000);
+    }
+
+    function selectSkillCard(idx) {
+      if (!state.modal || state.modal.type !== 'skill_choice' || !state.battle) return;
+      const card = state.modal.cards[idx];
+      clearModalCountdown();
+      // 将词条写入对应英雄（若场上无该英雄则写入第一个槽位）
+      const target = state.battle.heroes.find(h => h.key === card.targetHero) || state.battle.heroes[0];
+      target.level++;
+      if (target.affixes.length >= 3) target.affixes.shift();
+      target.affixes.push(card.affix);
+
+      state.modal = null;
+      state.battle.paused = false;
+      showToast(`已选择：${card.title}（${target.name} Lv.${target.level}）`, 'success');
+      render();
+    }
+
+    function refreshSkillCards() {
+      if (!state.modal || state.modal.type !== 'skill_choice' || !state.battle) return;
+      const b = state.battle;
+      if (b.freeRefreshLeft > 0) {
+        b.freeRefreshLeft--;
+      } else if (b.mode === 'dungeon') {
+        showToast('看广告刷新成功');
+      } else {
+        if (state.redGem < 50) {
+          showToast('红钻不足', 'warn');
+          return;
+        }
+        state.redGem -= 50;
+        showToast('消耗 50 红钻刷新成功');
+      }
+      // 明确规则：不重置 10s 倒计时！
+      state.modal.cards = rollThreeAffixes();
+      renderModal();
+    }
+
+    // ==================== 结算流程（成功 / 失败） ====================
+    function triggerVictory() {
+      if (!state.battle) return;
+      const b = state.battle;
+      b.paused = true;
+      clearModalCountdown();
+
+      const list = getModeSubstages(b.mode);
+      const stage = list.find(s => s.id === b.stageId);
+      const isFirstClear = stage && !stage.cleared;
+      const storedBonus = (b.mode !== 'dungeon' && stage) ? stage.storedGem : 0;
+
+      if (stage) {
+        stage.cleared = true;
+        if (b.mode !== 'dungeon') {
+          stage.sweepable = true;
+          stage.storedGem = 0;
+        }
+        const nextStage = list.find(s => s.chapterId === stage.chapterId && s.num === stage.num + 1);
+        if (nextStage) nextStage.unlocked = true;
+      }
+
+      const mult = state.monthCardActive ? 1.2 : 1.0;
+      const totalGain = b.mode === 'dungeon' ? 0 : (Math.round(b.rewardGem * mult) + b.bonusGem + storedBonus);
+      if (b.mode !== 'dungeon') state.redGem += totalGain;
+
+      state.modal = {
+        type: 'victory',
+        stageName: b.stageName,
+        baseGem: b.rewardGem,
+        bonusGem: b.bonusGem,
+        storedBonus,
+        totalGain,
+        isFirstClear,
+        countdown: 5
+      };
+      renderModal();
+      if (b.mode !== 'dungeon') startVictoryCountdown();
+    }
+
+    function startVictoryCountdown() {
+      clearModalCountdown();
+      modalCountdownInterval = setInterval(() => {
+        if (!state.modal || state.modal.type !== 'victory' || !state.battle) {
+          clearModalCountdown();
+          return;
+        }
+        state.modal.countdown--;
+        const el = document.getElementById('victory-auto-cd');
+        if (el) {
+          el.textContent = state.battle.loopStage
+            ? `${state.modal.countdown}s后自动重新挑战`
+            : `${state.modal.countdown}s后自动下一关`;
+        }
+        if (state.modal.countdown <= 0) {
+          clearModalCountdown();
+          if (state.battle.loopStage) {
+            startBattle(state.battle.stageId);
+          } else {
+            goToNextStageFromVictory();
+          }
+        }
+      }, 1000);
+    }
+
+    function goToNextStageFromVictory() {
+      if (!state.battle) return;
+      const mode = state.battle.mode;
+      const list = getModeSubstages(mode);
+      const cur = list.find(s => s.id === state.battle.stageId);
+      const next = cur ? list.find(s => s.chapterId === cur.chapterId && s.num === cur.num + 1) : null;
+      if (next && next.unlocked) {
+        startBattle(next.id, mode);
+      } else {
+        exitBattleTo('substages');
+        showToast('本章已全部通关！');
+      }
+    }
+
+    function triggerDefeat() {
+      if (!state.battle) return;
+      const b = state.battle;
+      b.paused = true;
+      clearModalCountdown();
+
+      const mult = state.monthCardActive ? 1.2 : 1.0;
+      const rawTotal = b.mode === 'dungeon' ? 0 : Math.round(b.rewardGem * mult);
+      const storedAmount = b.mode === 'dungeon' ? 0 : Math.round(rawTotal * 0.4);
+      const stage = getModeSubstages(b.mode).find(s => s.id === b.stageId);
+      if (stage && b.mode !== 'dungeon') {
+        stage.storedGem = (stage.storedGem || 0) + storedAmount;
+      }
+
+      state.modal = {
+        type: 'defeat',
+        stageName: b.stageName,
+        baseGem: b.rewardGem,
+        storedAmount,
+        countdown: 5
+      };
+      renderModal();
+
+      if (b.mode !== 'dungeon') {
+        modalCountdownInterval = setInterval(() => {
+          if (!state.modal || state.modal.type !== 'defeat') {
+            clearModalCountdown();
+            return;
+          }
+          state.modal.countdown--;
+          const el = document.getElementById('defeat-auto-cd');
+          if (el) el.textContent = `${state.modal.countdown}s后自动返回`;
+          if (state.modal.countdown <= 0) {
+            clearModalCountdown();
+            exitBattleTo('substages');
+          }
+        }, 1000);
+      }
+    }
+
+    function exitBattleTo(targetScreen, placeholderTitle = '') {
+      clearModalCountdown();
+      state.battle = null;
+      state.modal = null;
+      if (targetScreen === 'placeholder') {
+        state.placeholderTitle = placeholderTitle;
+        state.placeholderFrom = 'lobby';
+      }
+      state.screen = targetScreen;
+      render();
+    }
+
+    // ==================== 竞技场匹配、战斗与结算 ====================
+    function getArenaTier(idx = state.arena.tierIndex) {
+      return state.arena.tiers[Math.max(0, Math.min(state.arena.tiers.length - 1, idx))];
+    }
+
+    function hasClaimableTierReward() {
+      return state.arena.tiers.some(t => t.id <= state.arena.tierIndex && !t.claimed);
+    }
+
+    function openArenaMatching(roomType) {
+      const tier = getArenaTier();
+      if (roomType === 'high' && state.arena.tierIndex < 7) {
+        showToast('需要达到「钻石-至尊王者」段位才能匹配高级场', 'warn');
+        return;
+      }
+      state.arena.selectedRoom = roomType;
+      clearModalCountdown();
+      state.modal = { type: 'arena_matching', roomType };
+      renderModal();
+      arenaMatchTimeout = setTimeout(() => {
+        if (state.modal && state.modal.type === 'arena_matching') {
+          startArenaBattle(roomType);
+        }
+      }, 2000);
+    }
+
+    function startArenaBattle(roomType) {
+      clearModalCountdown();
+      const preset = state.presets[state.activePreset];
+      const battleHeroes = preset.heroes.map((hKey, idx) => {
+        const meta = state.heroMeta[hKey];
+        return {
+          slot: idx + 1,
+          key: hKey,
+          name: meta.name,
+          color: meta.color,
+          hat: meta.hat,
+          symbol: meta.symbol,
+          level: idx === 0 ? 3 : 1,
+          enabled: true,
+          dmg: 0,
+          affixes: idx === 0 ? ['风刃连射 +20%', '攻速提升 15%'] : ['基础射击']
+        };
+      });
+
+      state.battle = {
+        mode: 'arena',
+        roomType,
+        roomLabel: roomType === 'high' ? '高级场' : '中级场',
+        paused: false,
+        level: 1,
+        exp: 0,
+        expMax: 100,
+        hp: 2800,
+        hpMax: 2800,
+        oppName: '寂寞的雪糕',
+        oppTierName: getArenaTier().name,
+        oppCannon: 1000,
+        oppGold: 999999999,
+        oppHp: 2800,
+        oppHpMax: 2800,
+        oppHeroes: ['fire', 'ice', 'thunder', 'wind'],
+        poolGold: 999999999,
+        cannonTier: 100,
+        switchListOpen: false,
+        statsOpen: false,
+        activeAffixSlot: null,
+        diceCd: 0,
+        skillCd: 0,
+        freeRefreshLeft: 10,
+        freeRefreshMax: 10,
+        heroes: battleHeroes
+      };
+      state.screen = 'arena_battle';
+      state.modal = null;
+      render();
+      // 默认滚动到底部（己方视角）
+      setTimeout(() => {
+        const scroller = document.getElementById('arena-split-scroller');
+        if (scroller) scroller.scrollTop = scroller.scrollHeight;
+      }, 20);
+    }
+
+    function triggerArenaSettlement(isWin) {
+      if (!state.battle) return;
+      const b = state.battle;
+      b.paused = true;
+      clearModalCountdown();
+
+      const oldTierIdx = state.arena.tierIndex;
+      const oldTier = getArenaTier(oldTierIdx);
+      const oldPts = state.arena.points;
+      const delta = isWin ? 30 : -30;
+      const newPts = Math.max(0, oldPts + delta);
+      state.arena.points = newPts;
+
+      // 计算新段位
+      let newTierIdx = oldTierIdx;
+      for (let i = state.arena.tiers.length - 1; i >= 0; i--) {
+        if (newPts >= state.arena.tiers[i].minPts) {
+          newTierIdx = i;
+          break;
+        }
+      }
+      state.arena.tierIndex = newTierIdx;
+      const newTier = getArenaTier(newTierIdx);
+
+      const coinGain = isWin ? 30 : 15;
+      state.arena.coins += coinGain;
+      state.arena.history.unshift({
+        room: b.roomLabel,
+        date: '11.26',
+        win: isWin,
+        oppName: b.oppName,
+        oppPower: '99w',
+        delta
+      });
+
+      state.modal = {
+        type: 'arena_settlement',
+        isWin,
+        oldTier,
+        newTier,
+        tierChanged: newTierIdx !== oldTierIdx,
+        oldPts,
+        newPts,
+        delta,
+        coinGain,
+        oppName: b.oppName
+      };
+      renderModal();
+    }
+
+    // ==================== 奖池场逻辑 ====================
+    function startPoolBattle(roomType) {
+      clearModalCountdown();
+      state.poolField.room = roomType;
+      const preset = state.presets[state.activePreset];
+      const battleHeroes = preset.heroes.map((hKey, idx) => {
+        const meta = state.heroMeta[hKey];
+        return {
+          slot: idx + 1,
+          key: hKey,
+          name: meta.name,
+          color: meta.color,
+          hat: meta.hat,
+          symbol: meta.symbol,
+          level: idx === 0 ? 3 : 1,
+          enabled: true,
+          dmg: 0,
+          affixes: idx === 0 ? ['风刃连射 +20%', '攻速提升 15%'] : ['基础射击']
+        };
+      });
+
+      state.battle = {
+        mode: 'pool',
+        roomType,
+        roomLabel: roomType === 'high' ? '奖池高级场' : '奖池中级场',
+        paused: false,
+        hp: 2800,
+        hpMax: 2800,
+        oppName: '寂寞的雪糕',
+        oppCannon: 1000,
+        oppGold: 999999999,
+        oppGem: 999999999,
+        oppHp: 2800,
+        oppHpMax: 2800,
+        oppHeroes: ['fire', 'ice', 'thunder', 'wind'],
+        poolGold: 999999999,
+        poolGem: 999999999,
+        cannonTier: 100,
+        autoAtk: true,
+        rage: false,
+        lockTarget: false,
+        switchListOpen: false,
+        activeAffixSlot: null,
+        skillCd: 0,
+        pkActive: false,
+        pkTimeLeft: 30,
+        myPkDmg: 0,
+        oppPkDmg: 0,
+        heroes: battleHeroes
+      };
+      state.screen = 'pool_battle';
+      state.modal = null;
+      render();
+    }
+
+    function sendPoolPkInvite() {
+      if (!state.battle || state.battle.pkActive) {
+        showToast('当前已在征战PK中');
+        return;
+      }
+      clearModalCountdown();
+      state.modal = { type: 'pool_pk_waiting', countdown: 10 };
+      renderModal();
+
+      let accepted = false;
+      modalCountdownInterval = setInterval(() => {
+        if (!state.modal || state.modal.type !== 'pool_pk_waiting') {
+          clearModalCountdown();
+          return;
+        }
+        state.modal.countdown--;
+        const el = document.getElementById('pk-wait-cd');
+        if (el) el.textContent = `${state.modal.countdown}s后对方未接受，本次邀请结束`;
+        // 演示：约2秒后模拟对方接受邀请
+        if (state.modal.countdown === 8 && !accepted) {
+          accepted = true;
+          clearModalCountdown();
+          state.modal = null;
+          activatePoolPk();
+          showToast('对方已接受邀请！扭蛋机PK开启', 'success');
+          render();
+          return;
+        }
+        if (state.modal.countdown <= 0) {
+          clearModalCountdown();
+          state.modal = null;
+          renderModal();
+        }
+      }, 1000);
+    }
+
+    function openReceivePoolPkInvite() {
+      if (!state.battle || state.screen !== 'pool_battle') return;
+      clearModalCountdown();
+      state.modal = { type: 'pool_pk_receive', countdown: 10 };
+      renderModal();
+      modalCountdownInterval = setInterval(() => {
+        if (!state.modal || state.modal.type !== 'pool_pk_receive') {
+          clearModalCountdown();
+          return;
+        }
+        state.modal.countdown--;
+        const el = document.getElementById('pk-recv-cd');
+        if (el) el.textContent = `${state.modal.countdown}s后未选择则自动拒绝`;
+        if (state.modal.countdown <= 0) {
+          clearModalCountdown();
+          state.modal = null;
+          showToast('已超时自动拒绝PK邀请');
+          renderModal();
+        }
+      }, 1000);
+    }
+
+    function activatePoolPk() {
+      if (!state.battle) return;
+      state.battle.pkActive = true;
+      state.battle.pkTimeLeft = 30;
+      state.battle.myPkDmg = 2400;
+      state.battle.oppPkDmg = 1500;
+    }
+
+    function triggerPoolPkSettlement(isWin) {
+      if (!state.battle) return;
+      const b = state.battle;
+      b.pkActive = false;
+      b.paused = true;
+      clearModalCountdown();
+
+      const rewardGold = isWin ? 999999999 : 0;
+      if (isWin) state.gold += 500000;
+
+      state.modal = {
+        type: 'pool_pk_settlement',
+        isWin,
+        rewardGold,
+        oppName: b.oppName,
+        countdown: 10
+      };
+      renderModal();
+
+      modalCountdownInterval = setInterval(() => {
+        if (!state.modal || state.modal.type !== 'pool_pk_settlement') {
+          clearModalCountdown();
+          return;
+        }
+        state.modal.countdown--;
+        const el = document.getElementById('pk-settle-cd');
+        if (el) el.textContent = `${state.modal.countdown}s后自动关闭`;
+        if (state.modal.countdown <= 0) {
+          clearModalCountdown();
+          state.modal = null;
+          if (state.battle) state.battle.paused = false;
+          render();
+        }
+      }, 1000);
+    }
+
+    function openPoolReviveModal() {
+      if (!state.battle) return;
+      state.battle.paused = true;
+      clearModalCountdown();
+      state.modal = { type: 'pool_revive', countdown: 30 };
+      renderModal();
+
+      modalCountdownInterval = setInterval(() => {
+        if (!state.modal || state.modal.type !== 'pool_revive') {
+          clearModalCountdown();
+          return;
+        }
+        state.modal.countdown--;
+        const el = document.getElementById('pool-revive-cd');
+        if (el) el.textContent = `${state.modal.countdown}s后离场`;
+        if (state.modal.countdown <= 0) {
+          clearModalCountdown();
+          exitBattleTo('pool_lobby');
+        }
+      }, 1000);
+    }
+
+    // ==================== SVG 图标组件 ====================
+    function renderHeroAvatarSvg(key, size = 44) {
+      const m = state.heroMeta[key];
+      return `
+        <svg width="${size}" height="${size}" viewBox="0 0 48 48" class="shrink-0">
+          <circle cx="24" cy="27" r="15" fill="#fde68a" stroke="#1e293b" stroke-width="2.5"/>
+          <path d="M9 22 C11 10, 37 10, 39 22 Z" fill="${m.hat}" stroke="#1e293b" stroke-width="2.5"/>
+          <circle cx="19" cy="28" r="2" fill="#1e293b"/>
+          <circle cx="29" cy="28" r="2" fill="#1e293b"/>
+          <path d="M20 33 Q24 36 28 33" fill="none" stroke="#1e293b" stroke-width="2" stroke-linecap="round"/>
+          <text x="24" y="18" text-anchor="middle" font-size="10">${m.symbol}</text>
+        </svg>
+      `;
+    }
+
+    function renderCastleSvg(color, accent) {
+      return `
+        <svg width="118" height="84" viewBox="0 0 120 86" class="drop-shadow-lg">
+          <ellipse cx="60" cy="76" rx="52" ry="9" fill="#d97706" fill-opacity="0.35" stroke="#1e293b" stroke-width="2"/>
+          <rect x="20" y="34" width="80" height="40" rx="2" fill="${color}" stroke="#1e293b" stroke-width="3"/>
+          <rect x="20" y="22" width="14" height="14" fill="${color}" stroke="#1e293b" stroke-width="3"/>
+          <rect x="44" y="16" width="32" height="20" fill="${color}" stroke="#1e293b" stroke-width="3"/>
+          <rect x="86" y="22" width="14" height="14" fill="${color}" stroke="#1e293b" stroke-width="3"/>
+          <path d="M51 74 L51 54 C51 47, 69 47, 69 54 L69 74 Z" fill="${accent}" stroke="#1e293b" stroke-width="3"/>
+        </svg>
+      `;
+    }
+
+    // ==================== 界面渲染 ====================
+    function render() {
+      const root = document.getElementById('screen-root');
+      const dbgRoute = document.getElementById('debug-route');
+      const routeNames = {
+        lobby: '大厅（战斗）',
+        chapters: `${state.mode === 'dungeon' ? '副本场' : '闯关场'} - 章节列表`,
+        substages: `${state.mode === 'dungeon' ? '副本场' : '闯关场'} - 小关卡选择（野兽岛）`,
+        battle: `战斗场内（${state.battle ? state.battle.stageName : ''}）`,
+        arena_lobby: '竞技场大厅',
+        arena_pool: `${state.arena.poolRoom === 'high' ? '竞技高级场' : '竞技中级场'}奖池`,
+        arena_battle: `竞技场战斗（${state.battle ? state.battle.roomLabel : ''}）`,
+        pool_lobby: '奖池场大厅',
+        pool_detail: `${state.poolField.room === 'high' ? '奖池高级场' : '奖池中级场'}详情`,
+        pool_battle: `奖池场战斗（${state.battle ? state.battle.roomLabel : ''}）`,
+        placeholder: `占位界面 - ${state.placeholderTitle}`
+      };
+      if (dbgRoute) dbgRoute.textContent = routeNames[state.screen] || state.screen;
+
+      // 更新调试按钮可用状态
+      const inBattle = (state.screen === 'battle' || state.screen === 'arena_battle' || state.screen === 'pool_battle') && state.battle;
+      ['dbg-levelup', 'dbg-win', 'dbg-lose'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) btn.disabled = !inBattle;
+      });
+      const inPool = state.screen === 'pool_battle' && state.battle;
+      ['dbg-pk-receive', 'dbg-pool-die'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) btn.disabled = !inPool;
+      });
+
+      if (state.screen === 'lobby') renderLobby(root);
+      else if (state.screen === 'chapters') renderChapters(root);
+      else if (state.screen === 'substages') renderSubstages(root);
+      else if (state.screen === 'battle') renderBattle(root);
+      else if (state.screen === 'arena_lobby') renderArenaLobby(root);
+      else if (state.screen === 'arena_pool') renderArenaPool(root);
+      else if (state.screen === 'arena_battle') renderArenaBattle(root);
+      else if (state.screen === 'pool_lobby') renderPoolLobby(root);
+      else if (state.screen === 'pool_detail') renderPoolDetail(root);
+      else if (state.screen === 'pool_battle') renderPoolBattle(root);
+      else if (state.screen === 'placeholder') renderPlaceholderScreen(root);
+
+      renderModal();
+    }
+
+    // 1. 大厅界面
+    function renderLobby(root) {
+      const latest = getLatestChallengeStage('stage');
+      const preset = state.presets[state.activePreset];
+      const actCount = state.activitiesExpanded ? 7 : 5;
+      const actIcons = ['⭐', '🎁', '🌟', '🎀', '⭐', '🔥', '💎'];
+
+      root.innerHTML = `
+        <div class="lobby-bg flex-1 relative flex flex-col justify-between overflow-hidden">
+          <!-- 背景云朵与虚线 -->
+          <div class="pointer-events-none absolute inset-0 overflow-hidden">
+            <div class="absolute top-28 left-12 w-24 h-7 bg-white/25 rounded-full blur-[1px]"></div>
+            <div class="absolute top-48 right-8 w-28 h-8 bg-white/20 rounded-full blur-[1px]"></div>
+            <svg class="absolute inset-0 w-full h-full" viewBox="0 0 400 680" preserveAspectRatio="none">
+              <path d="M210 170 Q200 260 140 330 Q150 410 280 460" fill="none" stroke="rgba(255,255,255,0.45)" stroke-width="4" stroke-dasharray="8 8"/>
+            </svg>
+          </div>
+
+          <!-- 顶部系统功能区 -->
+          <div class="relative z-10 flex items-center justify-between px-3 pt-3">
+            <div class="bg-slate-900/60 border border-slate-600/70 rounded-full px-3 py-1 text-[11px] font-semibold text-amber-300 flex items-center gap-1.5">
+              <span>💎</span><span>${fmtNum(state.redGem)}</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              ${['邮件', '公告', '客服'].map((name, i) => `
+                <button data-placeholder="${name}" class="w-9 h-9 rounded-lg bg-slate-800/85 hover:bg-slate-700 border border-slate-600 flex items-center justify-center text-sm shadow transition active:scale-95" title="${name}">
+                  ${['✉️', '📢', '🎧'][i]}
+                </button>
+              `).join('')}
+            </div>
+          </div>
+
+          <!-- 中央区域（左活动 + 中城堡 + 右商业化） -->
+          <div class="relative z-10 flex-1 flex items-stretch justify-between px-2.5 py-2 overflow-hidden">
+            <!-- 左侧活动栏 -->
+            <div class="flex flex-col items-center gap-1.5 w-14 overflow-y-auto no-scrollbar pt-2">
+              ${Array.from({ length: actCount }).map((_, i) => `
+                <button data-placeholder="活动${i+1}" class="w-12 bg-slate-700/85 hover:bg-slate-600 border-2 border-amber-400/80 rounded-xl p-1 flex flex-col items-center shadow transition active:scale-95 shrink-0">
+                  <span class="text-base leading-none">${actIcons[i]}</span>
+                  <span class="text-[10px] font-bold text-white mt-0.5">活动${i+1}</span>
+                  <span data-act-timer="${i}" class="text-[9px] bg-slate-950/90 text-amber-200 px-1 rounded mt-0.5 tabular-nums">${fmtTimer(state.activityTimers[i])}</span>
+                </button>
+              `).join('')}
+              <button id="btn-toggle-acts" class="w-8 h-5 rounded-full bg-slate-800/80 border border-slate-500 flex items-center justify-center text-[10px] text-amber-300 hover:bg-slate-700 transition">
+                ${state.activitiesExpanded ? '▲' : '▼'}
+              </button>
+            </div>
+
+            <!-- 中央三大玩法城堡 -->
+            <div class="flex-1 relative flex flex-col items-center justify-center">
+              <!-- 闯关场 & 右侧小入口：副本场 -->
+              <div class="relative flex items-center justify-center w-full -mt-4">
+                <div class="relative flex flex-col items-center">
+                  <div class="bg-slate-900/90 border border-slate-600 text-white text-xs font-bold px-4 py-1 rounded-full shadow mb-1">闯关场</div>
+                  <button id="btn-enter-chapters" class="animate-float cursor-pointer focus:outline-none hover:brightness-110 transition" title="进入闯关场章节列表">
+                    ${renderCastleSvg('#d96b52', '#fde047')}
+                  </button>
+                  <!-- 快捷挑战信息条 -->
+                  <div class="flex items-center -mt-2 relative z-10">
+                    <div class="bg-slate-900/90 border-2 border-amber-400/70 rounded-l-xl px-3 py-1.5 pr-5 text-left shadow-lg">
+                      <div class="text-[11px] font-bold text-white">当前关卡: ${latest.name}</div>
+                      <div class="text-[10px] text-amber-200">推荐战力: ${fmtNum(latest.recPower)}</div>
+                    </div>
+                    <button id="btn-quick-challenge" class="animate-cta -ml-3 w-12 h-12 rounded-full bg-gradient-to-b from-orange-400 to-orange-600 border-2 border-amber-200 text-white font-extrabold text-xs shadow-xl flex items-center justify-center active:scale-95 transition">
+                      挑战
+                    </button>
+                  </div>
+                </div>
+
+                <!-- 闯关场右侧小的入口建筑：副本场 -->
+                <button id="btn-enter-dungeon" class="absolute right-0 top-2 flex flex-col items-center hover:brightness-110 transition active:scale-95" title="进入副本场">
+                  <div class="bg-slate-900/90 border border-slate-600 text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full shadow">副本场</div>
+                  <div class="scale-50 -my-4">${renderCastleSvg('#0284c7', '#fde047')}</div>
+                </button>
+              </div>
+
+              <!-- 竞技场 & 奖池场 -->
+              <div class="w-full flex items-center justify-between px-1 mt-3">
+                <button data-placeholder="竞技场" class="flex flex-col items-center -ml-2 hover:brightness-110 transition active:scale-95">
+                  <div class="bg-slate-900/90 border border-slate-600 text-white text-[11px] font-bold px-3 py-0.5 rounded-full shadow mb-0.5">竞技场</div>
+                  <div class="scale-75 -my-2">${renderCastleSvg('#8b7ec8', '#fde047')}</div>
+                </button>
+                <button data-placeholder="奖池场" class="flex flex-col items-center -mr-2 mt-8 hover:brightness-110 transition active:scale-95">
+                  <div class="bg-slate-900/90 border border-slate-600 text-white text-[11px] font-bold px-3 py-0.5 rounded-full shadow mb-0.5">奖池场</div>
+                  <div class="scale-75 -my-2">${renderCastleSvg('#56b89a', '#fde047')}</div>
+                </button>
+              </div>
+            </div>
+
+            <!-- 右侧商业化与日常栏 -->
+            <div class="flex flex-col items-center gap-2.5 w-14 pt-3">
+              ${[
+                { name: '特惠', icon: '🎁' },
+                { name: '福利', icon: '⭐' },
+                { name: '任务', icon: '📋' },
+                { name: '首充', icon: '🪙' }
+              ].map(item => `
+                <button data-placeholder="${item.name}" class="w-12 h-14 bg-slate-700/85 hover:bg-slate-600 border-2 border-amber-400/80 rounded-xl flex flex-col items-center justify-center shadow transition active:scale-95">
+                  <span class="text-lg leading-none">${item.icon}</span>
+                  <span class="text-[11px] font-bold text-white mt-1">${item.name}</span>
+                </button>
+              `).join('')}
+            </div>
+          </div>
+
+          <!-- 战力与出战阵容 -->
+          <div class="relative z-10 flex flex-col items-center pb-2.5">
+            <button data-placeholder="阵容配置" class="bg-slate-900/90 border border-slate-600 text-white text-xs font-extrabold px-4 py-1 rounded-full shadow mb-1.5 hover:bg-slate-800 transition">
+              战力 ${fmtNum(preset.power)}
+            </button>
+            <div class="flex items-center gap-2.5">
+              ${preset.heroes.map(hKey => `
+                <button data-placeholder="英雄详情（${state.heroMeta[hKey].name}）" class="hover:scale-110 transition active:scale-95">
+                  ${renderHeroAvatarSvg(hKey, 46)}
+                </button>
+              `).join('')}
+            </div>
+          </div>
+
+          <!-- 底部 5 Tab 导航 -->
+          <div class="relative z-10 bg-slate-900 border-t border-slate-700 px-2 py-1.5 grid grid-cols-5 gap-1.5">
+            ${[
+              { id: 'shop', name: '商城', icon: '🏪', dot: false },
+              { id: 'equip', name: '装备', icon: '👕', dot: true },
+              { id: 'battle', name: '战斗', icon: '⚔️', dot: false },
+              { id: 'hero', name: '英雄', icon: '♟️', dot: true },
+              { id: 'home', name: '家园', icon: '🏠', dot: true }
+            ].map(tab => {
+              const active = tab.id === 'battle';
+              return `
+                <button ${active ? '' : `data-placeholder="${tab.name}"`} class="relative rounded-xl py-1.5 flex flex-col items-center justify-center transition ${active ? 'bg-amber-400 text-slate-900 shadow-lg' : 'text-slate-300 hover:bg-slate-800'}">
+                  ${tab.dot ? '<span class="absolute top-1 right-2.5 w-2.5 h-2.5 rounded-full bg-rose-500 border border-slate-900"></span>' : ''}
+                  <span class="text-base leading-none">${tab.icon}</span>
+                  <span class="text-[11px] font-bold mt-0.5">${tab.name}</span>
+                </button>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      `;
+
+      // 绑定事件
+      document.getElementById('btn-enter-chapters').addEventListener('click', () => {
+        state.mode = 'stage';
+        state.screen = 'chapters';
+        render();
+      });
+      document.getElementById('btn-enter-dungeon').addEventListener('click', () => {
+        state.mode = 'dungeon';
+        state.screen = 'chapters';
+        render();
+      });
+      document.getElementById('btn-quick-challenge').addEventListener('click', () => {
+        startBattle(latest.id, 'stage');
+      });
+      document.getElementById('btn-toggle-acts').addEventListener('click', () => {
+        state.activitiesExpanded = !state.activitiesExpanded;
+        render();
+      });
+      root.querySelectorAll('[data-placeholder]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const title = btn.getAttribute('data-placeholder');
+          if (title === '竞技场') {
+            state.screen = 'arena_lobby';
+            render();
+            return;
+          }
+          if (title === '奖池场') {
+            state.screen = 'pool_lobby';
+            render();
+            return;
+          }
+          state.placeholderTitle = title;
+          state.placeholderFrom = 'lobby';
+          state.screen = 'placeholder';
+          render();
+        });
+      });
+    }
+
+    // 2. 闯关场 / 副本场章节列表
+    function renderChapters(root) {
+      const isDungeon = state.mode === 'dungeon';
+      const totalStored = getTotalStoredGems();
+      root.innerHTML = `
+        <div class="chapter-bg text-slate-900 flex-1 flex flex-col p-3.5 overflow-hidden">
+          <!-- 顶部 -->
+          <div class="flex items-start justify-between mb-2">
+            ${!isDungeon ? `
+              <div>
+                <div class="text-[11px] font-semibold text-slate-600">宝箱存储总奖励</div>
+                <div class="mt-0.5 inline-flex items-center gap-1.5 bg-white border-2 border-slate-400 rounded-lg px-2.5 py-1 shadow-xs">
+                  <span class="text-sm">💎</span>
+                  <span class="text-sm font-extrabold text-slate-900 tabular-nums">${fmtNum(totalStored)}</span>
+                </div>
+              </div>
+            ` : `
+              <button id="btn-chap-ticket" class="mt-1 inline-flex items-center gap-1.5 bg-white border-2 border-slate-500 rounded-full px-2.5 py-1 shadow-xs hover:bg-amber-50 transition">
+                <span class="w-5 h-5 rounded-full border border-slate-700 bg-slate-100 text-[11px] font-black flex items-center justify-center">券</span>
+                <span class="text-xs font-extrabold text-slate-800">剩余数：<span class="${state.dungeonTickets > 0 ? 'text-lime-600' : 'text-rose-600'}">${state.dungeonTickets}</span>/1</span>
+              </button>
+            `}
+            <h1 class="text-2xl font-black tracking-tight text-slate-800 pr-2">${isDungeon ? '副本场' : '闯关场'}</h1>
+          </div>
+
+          <!-- 章节卡片列表 -->
+          <div class="flex-1 overflow-y-auto space-y-3 py-1 no-scrollbar">
+            ${state.chapters.map(ch => `
+              <div data-chapter-id="${ch.id}" class="relative rounded-2xl border-2 ${ch.unlocked ? 'border-slate-700 cursor-pointer hover:shadow-md' : 'border-slate-400 cursor-not-allowed'} bg-white p-3 transition">
+                <div class="flex items-center justify-between mb-2">
+                  <h2 class="text-lg font-black text-slate-900">${ch.name}</h2>
+                  ${!isDungeon ? `
+                    <div class="flex items-center gap-1 text-xs font-extrabold text-amber-700 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-lg">
+                      <span>🧰</span><span>x${ch.chests}</span>
+                    </div>
+                  ` : ''}
+                </div>
+                <div class="flex items-end justify-between gap-2">
+                  <div class="relative w-44 h-24 rounded-xl bg-gradient-to-br ${ch.bg} p-2 flex flex-col justify-end text-white overflow-hidden">
+                    ${!ch.unlocked || isDungeon ? `<div class="absolute inset-0 ${!ch.unlocked ? 'bg-slate-900/45' : ''} flex items-center justify-center text-xs text-slate-200 font-semibold">背景图</div>` : ''}
+                    ${!isDungeon ? `
+                      <div class="relative z-10 text-[11px] font-bold leading-tight drop-shadow">攻击力: ${ch.atkRange}</div>
+                      <div class="relative z-10 text-[11px] font-bold leading-tight drop-shadow">金币携带: ${ch.goldRange}</div>
+                    ` : ''}
+                  </div>
+                  <div class="flex items-center gap-1.5">
+                    ${['💎', '⚔️', '🪙'].map((ic, idx) => `
+                      <button data-drop-tip="${ch.name}掉落预览 ${idx+1}" class="w-10 h-10 rounded-lg border-2 border-slate-300 bg-slate-50 hover:bg-amber-50 flex flex-col items-center justify-center text-xs transition" onclick="event.stopPropagation()">
+                        <span>${ic}</span>
+                        <span class="text-[9px] text-slate-500 font-semibold">奖励</span>
+                      </button>
+                    `).join('')}
+                  </div>
+                </div>
+
+                ${!ch.unlocked ? `
+                  <div class="absolute inset-0 rounded-2xl bg-slate-200/65 backdrop-blur-[1px] flex flex-col items-center justify-center pointer-events-none">
+                    <div class="text-3xl mb-0.5">🔒</div>
+                    <div class="text-xs font-extrabold text-slate-700 bg-white/90 px-2.5 py-0.5 rounded-full border border-slate-300">暂未开启</div>
+                  </div>
+                ` : ''}
+              </div>
+            `).join('')}
+          </div>
+
+          <!-- 底部返回 -->
+          <div class="pt-2">
+            <button id="btn-chapters-back" class="px-6 py-2 rounded-xl bg-white border-2 border-slate-500 text-slate-800 font-bold text-sm hover:bg-slate-100 active:scale-95 transition">返回</button>
+          </div>
+        </div>
+      `;
+
+      document.getElementById('btn-chapters-back').addEventListener('click', () => {
+        state.screen = 'lobby';
+        render();
+      });
+      const chapTicketBtn = document.getElementById('btn-chap-ticket');
+      if (chapTicketBtn) {
+        chapTicketBtn.addEventListener('click', () => {
+          state.modal = { type: 'ticket_source' };
+          renderModal();
+        });
+      }
+      root.querySelectorAll('[data-chapter-id]').forEach(card => {
+        card.addEventListener('click', () => {
+          const cid = card.getAttribute('data-chapter-id');
+          const ch = state.chapters.find(c => c.id === cid);
+          if (!ch.unlocked) {
+            showToast(`「${ch.name}」暂未开启，请先通关前置章节`, 'warn');
+            return;
+          }
+          if (state.mode === 'stage' && state.gold < 100) {
+            showToast('金币不足（至少需要携带 100 金币）', 'warn');
+            state.modal = { type: 'recharge_prompt', chapterId: cid };
+            renderModal();
+            return;
+          }
+          state.selectedChapterId = cid;
+          state.quickGoOpen = false;
+          state.screen = 'substages';
+          render();
+        });
+      });
+      root.querySelectorAll('[data-drop-tip]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          showToast(btn.getAttribute('data-drop-tip'));
+        });
+      });
+    }
+
+    // 3. 小关卡选择界面（野兽岛）
+    function renderSubstages(root) {
+      const isDungeon = state.mode === 'dungeon';
+      const ch = state.chapters.find(c => c.id === state.selectedChapterId) || state.chapters[0];
+      const modeList = getModeSubstages(state.mode);
+      const list = modeList.filter(s => s.chapterId === ch.id);
+      const preset = state.presets[state.activePreset];
+      const quickList = isDungeon ? [] : getQuickGoList();
+      const latest = getLatestChallengeStage(state.mode);
+
+      // 蛇形排布位置（从第5关到第1关，自上而下）
+      const positions = {
+        5: 'self-center',
+        4: 'self-end mr-4',
+        3: 'self-start ml-4',
+        2: 'self-end mr-4',
+        1: 'self-start ml-4'
+      };
+
+      root.innerHTML = `
+        <div class="chapter-bg text-slate-900 flex-1 flex flex-col p-3.5 relative overflow-hidden">
+          <div class="flex items-center justify-between mb-2">
+            ${isDungeon ? `
+              <button id="btn-sub-ticket" class="inline-flex items-center gap-1.5 bg-white border-2 border-slate-500 rounded-full px-2.5 py-1 shadow-xs hover:bg-amber-50 transition">
+                <span class="w-5 h-5 rounded-full border border-slate-700 bg-slate-100 text-[11px] font-black flex items-center justify-center">券</span>
+                <span class="text-xs font-extrabold text-slate-800">剩余数：<span class="${state.dungeonTickets > 0 ? 'text-lime-600' : 'text-rose-600'}">${state.dungeonTickets}</span>/1</span>
+              </button>
+            ` : '<div class="w-20"></div>'}
+            <h1 class="text-2xl font-black text-center text-slate-800">${ch.name}</h1>
+            <div class="w-20"></div>
+          </div>
+
+          <!-- 蛇形 5 关节点 -->
+          <div class="flex-1 flex flex-col justify-between py-1 px-2 overflow-y-auto no-scrollbar">
+            ${[5, 4, 3, 2, 1].map(num => {
+              const s = list.find(x => x.num === num);
+              const isRec = latest && latest.id === s.id && !s.cleared;
+              return `
+                <div class="${positions[num]} flex flex-col items-center relative my-0.5">
+                  ${!isDungeon && s.storedGem > 0 ? `
+                    <div class="mb-0.5 inline-flex items-center gap-1 bg-white border border-rose-400 text-rose-700 text-[10px] font-extrabold px-2 py-0.5 rounded-full shadow-xs">
+                      <span>💎</span><span>${fmtNum(s.storedGem)}</span>
+                    </div>
+                  ` : ''}
+                  <button data-substage-id="${s.id}" class="relative w-28 h-14 rounded-xl border-2 ${s.unlocked ? (isRec ? 'border-orange-500 bg-amber-50 shadow-md' : 'border-slate-700 bg-white hover:bg-slate-50') : 'border-slate-400 bg-slate-200/80'} flex flex-col items-center justify-center transition active:scale-95">
+                    ${s.isBoss ? '<span class="absolute -top-3 text-base">👹</span>' : ''}
+                    ${isRec ? '<span class="absolute -top-2 -left-2 bg-orange-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-md shadow">推荐</span>' : ''}
+                    <span class="text-xs font-extrabold text-slate-900">${s.title}</span>
+                    ${s.cleared ? '<span class="text-[10px] font-bold text-emerald-600">已通关</span>' : ''}
+                    ${!s.unlocked ? '<span class="text-sm opacity-75">🔒</span>' : ''}
+                  </button>
+                  <span class="text-[10px] font-bold text-slate-600 mt-0.5">推荐战力：${fmtNum(s.recPower)}</span>
+                </div>
+              `;
+            }).join('')}
+          </div>
+
+          <!-- 编队与战力 -->
+          <div class="flex flex-col items-center mt-2">
+            <div class="grid grid-cols-4 border-2 border-slate-600 rounded-xl overflow-hidden bg-white">
+              ${preset.heroes.map((hKey, i) => `
+                <button data-preset-slot="${i+1}" class="w-12 h-11 border-r last:border-r-0 border-slate-300 flex items-center justify-center hover:bg-amber-50 transition">
+                  ${renderHeroAvatarSvg(hKey, 34)}
+                </button>
+              `).join('')}
+            </div>
+            <div class="flex items-center gap-2.5 mt-1.5">
+              ${[0, 1, 2].map(idx => `
+                <button data-preset-idx="${idx}" class="w-6 h-6 rounded-full text-xs font-black border ${state.activePreset === idx ? 'bg-amber-400 border-amber-600 text-slate-900' : 'bg-white border-slate-400 text-slate-600'} transition">
+                  ${idx + 1}
+                </button>
+              `).join('')}
+            </div>
+            <div class="text-xs font-extrabold text-slate-800 mt-1">战力：${fmtNum(preset.power)}</div>
+          </div>
+
+          <!-- 底部返回 & 右下角快捷前往 -->
+          <div class="flex items-center justify-between pt-2 relative">
+            <button id="btn-substages-back" class="px-6 py-2 rounded-xl bg-white border-2 border-slate-500 text-slate-800 font-bold text-sm hover:bg-slate-100 active:scale-95 transition">返回</button>
+
+            ${!isDungeon ? `<div class="relative">` : '<div>'}
+              ${state.quickGoOpen ? `
+                <div class="absolute bottom-12 right-0 w-44 bg-white border-2 border-slate-700 rounded-xl shadow-2xl overflow-hidden z-20">
+                  <div class="bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-600 border-b border-slate-300">可领取宝箱 / 可扫荡关卡</div>
+                  ${quickList.length > 0 ? quickList.map(q => `
+                    <button data-quick-id="${q.id}" class="w-full px-2.5 py-2 text-left text-xs font-bold text-slate-800 hover:bg-amber-50 border-b last:border-b-0 border-slate-200 flex items-center justify-between">
+                      <span>${q.name}</span>
+                      <span class="text-[10px] text-rose-600">${q.storedGem > 0 ? '💎' + fmtNum(q.storedGem) : '可扫荡'}</span>
+                    </button>
+                  `).join('') : '<div class="p-3 text-center text-[11px] text-slate-400">暂无待处理关卡</div>'}
+                </div>
+              ` : ''}
+
+              ${!isDungeon ? `
+                <button id="btn-quick-go" class="relative flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border-2 border-slate-700 text-slate-900 font-extrabold text-xs shadow hover:bg-amber-50 active:scale-95 transition">
+                  ${!state.quickGoOpen && quickList.length > 0 ? '<span class="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 rounded-full bg-rose-500 border-2 border-white"></span>' : ''}
+                  <span>🧰</span><span>快捷前往</span>
+                </button>
+              ` : ''}
+            </div>
+          </div>
+        </div>
+      `;
+
+      document.getElementById('btn-substages-back').addEventListener('click', () => {
+        state.screen = 'chapters';
+        render();
+      });
+      const subTicketBtn = document.getElementById('btn-sub-ticket');
+      if (subTicketBtn) {
+        subTicketBtn.addEventListener('click', () => {
+          state.modal = { type: 'ticket_source' };
+          renderModal();
+        });
+      }
+      root.querySelectorAll('[data-substage-id]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const sid = btn.getAttribute('data-substage-id');
+          const s = modeList.find(x => x.id === sid);
+          if (!s.unlocked) {
+            showToast(`推荐战力 ${fmtNum(s.recPower)}，请先通关前置关卡`, 'warn');
+            return;
+          }
+          startBattle(s.id);
+        });
+      });
+      root.querySelectorAll('[data-preset-idx]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          state.activePreset = Number(btn.getAttribute('data-preset-idx'));
+          render();
+          showToast(`已切换至「${state.presets[state.activePreset].name}」`);
+        });
+      });
+      root.querySelectorAll('[data-preset-slot]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          state.placeholderTitle = `快速布阵（槽位${btn.getAttribute('data-preset-slot')}）`;
+          state.placeholderFrom = 'substages';
+          state.screen = 'placeholder';
+          render();
+        });
+      });
+      const quickGoBtn = document.getElementById('btn-quick-go');
+      if (quickGoBtn) {
+        quickGoBtn.addEventListener('click', () => {
+          state.quickGoOpen = !state.quickGoOpen;
+          render();
+        });
+      }
+      root.querySelectorAll('[data-quick-id]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const qid = btn.getAttribute('data-quick-id');
+          state.quickGoOpen = false;
+          startBattle(qid);
+        });
+      });
+    }
+
+    // 4. 战斗场内界面
+    function renderBattle(root) {
+      const b = state.battle;
+      if (!b) return;
+      const isDungeon = b.mode === 'dungeon';
+      const expPct = Math.min(100, Math.round((b.exp / b.expMax) * 100));
+      const hpPct = Math.min(100, Math.round((b.hp / b.hpMax) * 100));
+      const activeAffixHero = b.activeAffixSlot ? b.heroes.find(h => h.slot === b.activeAffixSlot) : null;
+
+      root.innerHTML = `
+        <div class="flex-1 bg-gradient-to-b from-sky-100 via-emerald-50 to-amber-50 text-slate-900 flex flex-col justify-between relative overflow-hidden">
+          <!-- 顶部 HUD -->
+          <div class="p-2.5 bg-white/85 border-b border-slate-300 z-10">
+            <div class="flex items-start justify-between gap-2">
+              <button id="btn-battle-pause" class="px-2.5 py-1 rounded-lg bg-white border-2 border-slate-500 text-xs font-bold hover:bg-slate-100 active:scale-95">暂停</button>
+              <div class="flex flex-col items-center relative">
+                <div class="text-xs font-black text-slate-800">${b.stageName}</div>
+                ${!isDungeon ? `
+                  <div class="mt-0.5 relative inline-flex items-center">
+                    <div class="bg-white border border-slate-400 rounded-lg px-2.5 py-0.5 text-center shadow-xs">
+                      <div class="text-[10px] font-bold text-slate-500 leading-none">结算奖励</div>
+                      <div id="hud-reward-gem" class="text-xs font-black text-rose-600 tabular-nums">💎 ${fmtNum(b.rewardGem)}</div>
+                    </div>
+                    <!-- 结算奖励右侧冒出的通关额外奖励气泡框 -->
+                    <div class="absolute left-full -top-2 ml-1.5 whitespace-nowrap bg-rose-50 border-2 border-rose-400 rounded-xl px-2 py-0.5 text-left shadow-sm z-20">
+                      <div class="text-[9px] text-rose-600 font-bold leading-none">通关额外奖励</div>
+                      <div class="text-[11px] font-black text-rose-600 leading-tight">💎 ${fmtNum(b.bonusGem)}</div>
+                      <span class="absolute -left-1.5 bottom-1.5 w-2.5 h-2.5 bg-rose-50 border-l-2 border-b-2 border-rose-400 rotate-45"></span>
+                    </div>
+                  </div>
+                ` : ''}
+                <div class="mt-1 bg-slate-200 border border-slate-400 rounded-full px-2.5 py-0.5 text-[10px] font-extrabold text-slate-700" id="hud-wave">波次：${b.wave}/${b.maxWave}</div>
+              </div>
+              <div class="flex flex-col items-end pt-1">
+                <div id="hud-timer" class="bg-slate-600 text-white text-[11px] font-bold px-2 py-0.5 rounded tabular-nums">${fmtTimer(b.timeLeft)}</div>
+              </div>
+            </div>
+            <!-- 局内经验条 -->
+            <div class="mt-1.5 relative h-4 bg-white border border-slate-400 rounded-full overflow-hidden">
+              <div id="hud-exp-bar" class="h-full bg-sky-400 transition-all duration-300" style="width: ${expPct}%"></div>
+              <div id="hud-level" class="absolute inset-0 flex items-center justify-center text-[10px] font-extrabold text-slate-800">${b.level}级</div>
+            </div>
+          </div>
+
+          <!-- 战场中央动画与左右悬浮区 -->
+          <div id="battle-arena-fx" class="flex-1 relative flex items-center justify-center overflow-hidden">
+            ${activeAffixHero ? `
+              <div class="pointer-events-none absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/3 ${state.heroMeta[activeAffixHero.key].rangeSize} rounded-full border-2 border-dashed border-sky-500 bg-sky-400/20 flex items-start justify-center pt-3 z-0">
+                <span class="bg-sky-600/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow">${activeAffixHero.name} 攻击范围：${state.heroMeta[activeAffixHero.key].range}</span>
+              </div>
+            ` : ''}
+            <!-- 模拟怪物波次 -->
+            <div class="flex flex-col items-center">
+              <div class="w-24 h-2 bg-slate-300 rounded-full overflow-hidden border border-slate-500 mb-1">
+                <div id="hud-monster-hp" class="h-full bg-rose-500 transition-all duration-200" style="width: ${Math.max(0, Math.round(b.monsterHp / b.monsterMaxHp * 100))}%"></div>
+              </div>
+              <div class="text-4xl animate-float">👾</div>
+              <div class="text-[10px] font-bold text-slate-600 mt-0.5 bg-white/75 px-2 rounded-full">第 ${b.wave} 波敌人</div>
+            </div>
+
+            <!-- 左侧功能按钮（副本场隐藏） -->
+            ${!isDungeon ? `
+              <div class="absolute left-2 top-4 flex flex-col gap-2 z-10">
+                <button data-battle-pop="更多福利" class="relative w-12 h-12 rounded-full bg-white border-2 border-slate-500 text-[10px] font-bold leading-tight shadow hover:bg-amber-50">
+                  <span class="absolute -top-1 -right-0.5 w-4 h-4 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center">!</span>
+                  更多<br>福利
+                </button>
+                <button data-battle-pop="礼包" class="w-12 h-12 rounded-full bg-white border-2 border-slate-500 text-[11px] font-bold shadow hover:bg-amber-50">礼包</button>
+              </div>
+              <div class="absolute left-2 bottom-4 flex flex-col gap-1.5 z-10">
+                <button data-battle-pop="冒险" class="relative px-2.5 py-1 rounded-lg bg-white border-2 border-slate-500 text-[11px] font-bold shadow hover:bg-amber-50">
+                  <span class="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center">!</span>
+                  冒险
+                </button>
+                <button data-battle-pop="主线" class="relative px-2.5 py-1 rounded-lg bg-white border-2 border-slate-500 text-[11px] font-bold shadow hover:bg-amber-50">
+                  <span class="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center">!</span>
+                  主线
+                </button>
+              </div>
+            ` : ''}
+
+            <!-- 右侧统计 + 骰子 + 角色技能 -->
+            <div class="absolute right-2 top-3 flex items-start gap-1.5 z-20">
+              ${b.statsOpen ? `
+                <div class="w-40 bg-slate-900/95 text-white rounded-xl p-2 border border-slate-600 shadow-xl text-[10px]">
+                  <div class="text-center font-bold text-amber-300 border-b border-slate-700 pb-1 mb-1.5">双方贡献统计</div>
+                  <div id="hud-stats-rows" class="space-y-1.5">
+                    ${b.heroes.map(h => `
+                      <div>
+                        <div class="flex justify-between"><span>${h.name}</span><span class="text-amber-300 tabular-nums">${fmtNum(h.dmg)}</span></div>
+                        <div class="h-1.5 bg-slate-700 rounded-full overflow-hidden mt-0.5"><div class="h-full bg-amber-400" style="width:${Math.min(100, Math.max(10, Math.round(h.dmg / 20)))}%"></div></div>
+                      </div>
+                    `).join('')}
+                  </div>
+                </div>
+              ` : ''}
+              <button id="btn-toggle-stats" class="w-11 h-11 rounded-xl bg-slate-800/90 border-2 border-amber-400 text-white text-[10px] font-bold flex flex-col items-center justify-center shadow">
+                <span>📊</span><span>统计</span>
+              </button>
+            </div>
+
+            <div class="absolute right-2 bottom-4 flex flex-col gap-2 z-10">
+              <button id="btn-dice" class="w-12 h-12 rounded-full border-2 ${b.diceCd > 0 ? 'bg-slate-300 border-slate-400 text-slate-600' : 'bg-white border-slate-600 text-slate-900 hover:bg-amber-50'} text-xs font-extrabold shadow transition">
+                ${b.diceCd > 0 ? `${b.diceCd}s` : '🎲<br>骰子'}
+              </button>
+              <button id="btn-hero-skill" class="w-12 h-12 rounded-full border-2 ${b.skillCd > 0 ? 'bg-slate-300 border-slate-400 text-slate-600' : 'bg-white border-slate-600 text-slate-900 hover:bg-amber-50'} text-[10px] font-extrabold leading-tight shadow transition">
+                ${b.skillCd > 0 ? `${b.skillCd}s` : '角色<br>技能'}
+              </button>
+            </div>
+          </div>
+
+          <!-- 中下部英雄开关 + 词条 + 4英雄槽位 -->
+          <div class="px-2 pb-1 relative z-20">
+            <!-- 英雄开关展开列表 -->
+            ${b.switchListOpen ? `
+              <div class="mb-1.5 inline-flex items-center gap-1.5 bg-white/95 border-2 border-slate-600 rounded-full px-2.5 py-1 shadow-lg">
+                ${b.heroes.map(h => `
+                  <button data-toggle-hero="${h.slot}" class="relative w-10 h-10 rounded-full border-2 ${h.enabled ? 'border-emerald-500 bg-emerald-50' : 'border-slate-400 bg-slate-200 opacity-50 grayscale'} flex items-center justify-center transition" title="点击切换${h.name}战斗开关">
+                    ${renderHeroAvatarSvg(h.key, 32)}
+                    <span class="absolute -bottom-1 text-[8px] font-black px-1 rounded ${h.enabled ? 'bg-emerald-600 text-white' : 'bg-slate-600 text-white'}">${h.enabled ? '开' : '关'}</span>
+                  </button>
+                `).join('')}
+              </div>
+            ` : ''}
+
+            <!-- 向上展开的词条气泡 -->
+            ${activeAffixHero ? `
+              <div class="mb-1.5 bg-white border-2 border-slate-700 rounded-xl p-2 shadow-xl">
+                <div class="flex items-center justify-between text-[11px] font-extrabold text-slate-700 border-b border-slate-200 pb-1 mb-1">
+                  <span>${activeAffixHero.name}（Lv.${activeAffixHero.level}）· <span class="text-sky-600">范围: ${state.heroMeta[activeAffixHero.key].range}</span></span>
+                  <button id="btn-close-affix" class="text-slate-400 hover:text-slate-700">✕</button>
+                </div>
+                <div class="space-y-1">
+                  ${[0, 1, 2].map(i => `
+                    <div class="text-[11px] px-2 py-1 rounded bg-slate-100 border border-slate-300 font-semibold text-slate-800">
+                      词条${i+1}：${activeAffixHero.affixes[i] || '（暂无）'}
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            ` : ''}
+
+            <div class="flex items-center gap-2">
+              <button id="btn-hero-switch-entry" class="w-12 h-11 rounded-full border-2 ${b.switchListOpen ? 'bg-amber-400 border-amber-600' : 'bg-white border-slate-600'} text-xs font-extrabold shadow shrink-0">开关</button>
+              <div class="flex-1 grid grid-cols-4 border-2 border-slate-600 rounded-xl overflow-hidden bg-white shadow">
+                ${b.heroes.map(h => `
+                  <button data-affix-slot="${h.slot}" class="relative py-1 border-r last:border-r-0 border-slate-300 flex flex-col items-center justify-center ${b.activeAffixSlot === h.slot ? 'bg-amber-100' : 'hover:bg-slate-50'}">
+                    ${renderHeroAvatarSvg(h.key, 28)}
+                    <span class="text-[10px] font-black text-slate-700 leading-none">Lv${h.level}</span>
+                  </button>
+                `).join('')}
+              </div>
+            </div>
+          </div>
+
+          <!-- 底部血量、角色位、炮口倍率与货币 -->
+          <div class="bg-white/95 border-t border-slate-300 px-2.5 py-2 z-10">
+            <div class="flex items-center gap-2 mb-2">
+              <span class="text-xs font-black text-rose-600 flex items-center gap-0.5">❤️ ${b.hp}</span>
+              <div class="flex-1 h-3.5 bg-slate-200 border border-slate-400 rounded-full overflow-hidden">
+                <div class="h-full bg-lime-400" style="width:${hpPct}%"></div>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between gap-2 mb-2">
+              <div class="w-24"></div>
+              <div class="relative flex flex-col items-center justify-center px-3 py-1 rounded-xl border-2 border-slate-500 bg-gradient-to-b from-slate-50 to-slate-200 shadow-inner">
+                <svg width="46" height="44" viewBox="0 0 48 48" class="drop-shadow-xs">
+                  <ellipse cx="24" cy="43" rx="14" ry="3.5" fill="#94a3b8" fill-opacity="0.5"/>
+                  <path d="M15 39 L17 24 L31 24 L33 39 Z" fill="#3b82f6" stroke="#1e293b" stroke-width="2"/>
+                  <rect x="20" y="25" width="8" height="14" fill="#60a5fa"/>
+                  <circle cx="24" cy="15" r="8.5" fill="#fde68a" stroke="#1e293b" stroke-width="2"/>
+                  <path d="M15 13 C16 5, 32 5, 33 13 Z" fill="#f59e0b" stroke="#1e293b" stroke-width="2"/>
+                  <circle cx="21" cy="15" r="1.4" fill="#1e293b"/>
+                  <circle cx="27" cy="15" r="1.4" fill="#1e293b"/>
+                  <path d="M33 27 L41 18 L43 20 L35 29 Z" fill="#e2e8f0" stroke="#1e293b" stroke-width="1.5"/>
+                </svg>
+                <span class="text-[9px] font-black text-slate-600 -mt-1">主角模型</span>
+              </div>
+              <!-- 炮口倍率调节器（副本场隐藏） -->
+              ${!isDungeon ? `
+                <div class="flex items-center gap-1">
+                  <button id="btn-cannon-minus" class="w-7 h-7 rounded-lg border-2 border-slate-700 bg-white font-black text-base leading-none hover:bg-slate-100 active:scale-95">-</button>
+                  <div class="px-2 h-7 rounded-lg border-2 border-slate-400 bg-slate-50 flex items-center gap-1 text-xs font-black tabular-nums">
+                    <span>💠</span><span id="hud-cannon-tier">${b.cannonTier}</span>
+                  </div>
+                  <button id="btn-cannon-plus" class="w-7 h-7 rounded-lg border-2 border-slate-700 bg-white font-black text-base leading-none hover:bg-slate-100 active:scale-95">+</button>
+                </div>
+              ` : '<div class="w-24"></div>'}
+            </div>
+
+            ${!isDungeon ? `
+              <div class="flex items-center justify-between text-xs font-black text-slate-800 border-t border-slate-200 pt-1">
+                <div id="hud-gold">🪙 金币 ${fmtNum(state.gold)}</div>
+                <div id="hud-gem">${fmtNum(state.redGem)} 💎 红钻</div>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+      `;
+
+      // 绑定战斗内交互
+      document.getElementById('btn-battle-pause').addEventListener('click', () => {
+        b.paused = true;
+        state.modal = { type: 'pause' };
+        renderModal();
+      });
+      document.getElementById('btn-toggle-stats').addEventListener('click', () => {
+        b.statsOpen = !b.statsOpen;
+        render();
+      });
+      document.getElementById('btn-dice').addEventListener('click', () => {
+        if (b.diceCd > 0) return;
+        b.diceCd = 8;
+        const roll = Math.floor(Math.random() * 6) + 1;
+        if (b.mode === 'dungeon') {
+          b.monsterHp = Math.max(0, b.monsterHp - roll * 8);
+          showToast(`🎲 骰出 ${roll} 点！触发随机增益效果`, 'success');
+        } else {
+          b.rewardGem += roll * 200;
+          showToast(`🎲 骰出 ${roll} 点！额外获得 ${roll * 200} 结算红钻`, 'success');
+        }
+        render();
+      });
+      document.getElementById('btn-hero-skill').addEventListener('click', () => {
+        if (b.skillCd > 0) return;
+        b.skillCd = 10;
+        b.monsterHp = Math.max(0, b.monsterHp - 45);
+        showToast('⚡ 释放角色大招！造成巨额范围伤害', 'success');
+        render();
+      });
+      document.getElementById('btn-hero-switch-entry').addEventListener('click', () => {
+        b.switchListOpen = !b.switchListOpen;
+        render();
+      });
+      root.querySelectorAll('[data-toggle-hero]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const slot = Number(btn.getAttribute('data-toggle-hero'));
+          const h = b.heroes.find(x => x.slot === slot);
+          if (h) {
+            h.enabled = !h.enabled;
+            showToast(`${h.name} 已${h.enabled ? '开启' : '关闭'}战斗`);
+            render();
+          }
+        });
+      });
+      root.querySelectorAll('[data-affix-slot]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const slot = Number(btn.getAttribute('data-affix-slot'));
+          b.activeAffixSlot = b.activeAffixSlot === slot ? null : slot;
+          render();
+        });
+      });
+      const closeAffix = document.getElementById('btn-close-affix');
+      if (closeAffix) {
+        closeAffix.addEventListener('click', () => {
+          b.activeAffixSlot = null;
+          render();
+        });
+      }
+      const cannonMinus = document.getElementById('btn-cannon-minus');
+      if (cannonMinus) {
+        cannonMinus.addEventListener('click', () => {
+          if (b.cannonTier > 100) {
+            b.cannonTier -= 100;
+            showToast(`炮口档位切换为 ${b.cannonTier}`);
+            render();
+          } else {
+            showToast('已达最低档位 100');
+          }
+        });
+      }
+      const cannonPlus = document.getElementById('btn-cannon-plus');
+      if (cannonPlus) {
+        cannonPlus.addEventListener('click', () => {
+          if (b.cannonTier < 300) {
+            b.cannonTier += 100;
+            showToast(`炮口档位切换为 ${b.cannonTier}`);
+            render();
+          } else {
+            showToast('已达最高档位 300');
+          }
+        });
+      }
+      root.querySelectorAll('[data-battle-pop]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          b.paused = true;
+          state.modal = { type: 'battle_placeholder', title: btn.getAttribute('data-battle-pop') };
+          renderModal();
+        });
+      });
+    }
+
+    function renderBattleDynamicParts() {
+      const b = state.battle;
+      if (!b) return;
+      const g = (id) => document.getElementById(id);
+      if (g('hud-reward-gem')) g('hud-reward-gem').textContent = `💎 ${fmtNum(b.rewardGem)}`;
+      if (g('hud-wave')) g('hud-wave').textContent = `波次：${b.wave}/${b.maxWave}`;
+      if (g('hud-timer')) g('hud-timer').textContent = fmtTimer(b.timeLeft);
+      if (g('hud-level')) g('hud-level').textContent = `${b.level}级`;
+      if (g('hud-exp-bar')) g('hud-exp-bar').style.width = `${Math.min(100, Math.round((b.exp / b.expMax) * 100))}%`;
+      if (g('hud-monster-hp')) g('hud-monster-hp').style.width = `${Math.max(0, Math.round(b.monsterHp / b.monsterMaxHp * 100))}%`;
+      if (g('hud-gold')) g('hud-gold').textContent = `🪙 金币 ${fmtNum(state.gold)}`;
+      if (g('hud-gem')) g('hud-gem').textContent = `${fmtNum(state.redGem)} 💎 红钻`;
+      if (g('btn-dice')) {
+        g('btn-dice').innerHTML = b.diceCd > 0 ? `${b.diceCd}s` : '🎲<br>骰子';
+        g('btn-dice').className = `w-12 h-12 rounded-full border-2 ${b.diceCd > 0 ? 'bg-slate-300 border-slate-400 text-slate-600' : 'bg-white border-slate-600 text-slate-900 hover:bg-amber-50'} text-xs font-extrabold shadow transition`;
+      }
+      if (g('btn-hero-skill')) {
+        g('btn-hero-skill').innerHTML = b.skillCd > 0 ? `${b.skillCd}s` : '角色<br>技能';
+        g('btn-hero-skill').className = `w-12 h-12 rounded-full border-2 ${b.skillCd > 0 ? 'bg-slate-300 border-slate-400 text-slate-600' : 'bg-white border-slate-600 text-slate-900 hover:bg-amber-50'} text-[10px] font-extrabold leading-tight shadow transition`;
+      }
+      if (g('hud-stats-rows')) {
+        g('hud-stats-rows').innerHTML = b.heroes.map(h => `
+          <div>
+            <div class="flex justify-between"><span>${h.name}</span><span class="text-amber-300 tabular-nums">${fmtNum(h.dmg)}</span></div>
+            <div class="h-1.5 bg-slate-700 rounded-full overflow-hidden mt-0.5"><div class="h-full bg-amber-400" style="width:${Math.min(100, Math.max(10, Math.round(h.dmg / 20)))}%"></div></div>
+          </div>
+        `).join('');
+      }
+    }
+
+    // 4.5 竞技场大厅
+    function renderArenaLobby(root) {
+      const tier = getArenaTier();
+      const ptsPct = Math.min(100, Math.round(((state.arena.points - tier.minPts) / Math.max(1, tier.maxPts - tier.minPts)) * 100));
+      const days = Math.floor(state.arena.seasonTimeLeft / 86400);
+      const rem = state.arena.seasonTimeLeft % 86400;
+      const rewardDot = hasClaimableTierReward();
+
+      root.innerHTML = `
+        <div class="chapter-bg text-slate-900 flex-1 flex flex-col p-3.5 overflow-hidden">
+          <!-- 顶部标题与赛季倒计时 -->
+          <div class="text-center mb-2">
+            <div class="inline-flex items-center gap-1.5">
+              <h1 class="text-2xl font-black text-slate-800">竞技场大厅</h1>
+              <button id="btn-arena-rule" class="w-6 h-6 rounded-full border-2 border-slate-700 bg-white text-xs font-black flex items-center justify-center hover:bg-amber-50">?</button>
+            </div>
+            <div class="text-[11px] font-bold text-slate-600 tabular-nums">赛季倒计时：${days}天${fmtTimer(rem)}</div>
+          </div>
+
+          <!-- 段位与功能入口栏 -->
+          <div class="flex items-center justify-between gap-2 bg-white border-2 border-slate-400 rounded-xl p-2 mb-3 shadow-xs">
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-1 text-xs font-bold text-slate-700 mb-1">
+                <span>段位:</span>
+                <span class="px-2 py-0.5 rounded bg-slate-100 border border-slate-400 font-black text-slate-900">${tier.name}</span>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <span class="text-base">${tier.icon}</span>
+                <div class="flex-1 h-4 bg-slate-200 border border-slate-500 rounded overflow-hidden relative">
+                  <div class="h-full bg-amber-300" style="width:${ptsPct}%"></div>
+                  <div class="absolute inset-0 flex items-center justify-center text-[10px] font-black text-slate-900 tabular-nums">${state.arena.points}/${tier.maxPts}</div>
+                </div>
+              </div>
+            </div>
+            <div class="flex items-center gap-1 shrink-0">
+              <button id="btn-arena-tier-reward" class="relative px-2 py-1.5 rounded-lg border border-slate-500 bg-slate-50 hover:bg-amber-50 text-[10px] font-extrabold leading-tight">
+                ${rewardDot ? '<span class="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-rose-500 border border-white"></span>' : ''}
+                段位<br>奖励
+              </button>
+              <button id="btn-arena-shop" class="px-2 py-1.5 rounded-lg border border-slate-500 bg-slate-50 hover:bg-amber-50 text-[10px] font-extrabold leading-tight">竞技<br>商店</button>
+              <button id="btn-arena-history" class="px-2 py-1.5 rounded-lg border border-slate-500 bg-slate-50 hover:bg-amber-50 text-[10px] font-extrabold leading-tight">挑战<br>记录</button>
+            </div>
+          </div>
+
+          <!-- 场次列表 -->
+          <div class="flex-1 overflow-y-auto space-y-3 no-scrollbar">
+            ${[
+              { id: 'mid', name: '竞技中级场', reqTier: '青铜-钻石', reqPower: '档位：1W-5W', reqGold: '金币要求：500W-1000W' },
+              { id: 'high', name: '竞技高级场', reqTier: '钻石-至尊王者', reqPower: '档位要求：5W-10W', reqGold: '金币要求：2000W-5000W' }
+            ].map(room => `
+              <div class="bg-white border-2 border-slate-700 rounded-2xl p-3 space-y-2 shadow-xs">
+                <div class="flex items-start justify-between gap-2">
+                  <div>
+                    <h2 class="text-lg font-black text-slate-900">${room.name}</h2>
+                    <div class="text-[11px] font-bold text-slate-600 mt-0.5 space-y-0.5">
+                      <div>段位：${room.reqTier}</div>
+                      <div>${room.reqPower}</div>
+                      <div>${room.reqGold}</div>
+                    </div>
+                  </div>
+                  <button data-arena-match="${room.id}" class="px-5 py-2.5 rounded-xl border-2 border-slate-700 bg-amber-400 hover:bg-amber-300 font-black text-sm shadow active:scale-95 transition">匹配</button>
+                </div>
+
+                <button data-arena-pool="${room.id}" class="w-full text-left border border-slate-400 hover:border-amber-500 rounded-xl px-3 py-2 bg-slate-50 hover:bg-amber-50/60 relative transition active:scale-[0.99]">
+                  <div class="flex items-center justify-between">
+                    <span class="text-xs font-extrabold text-slate-700">奖池瓜分 <span class="text-[10px] text-sky-600 font-bold">查看详情 ›</span></span>
+                    <span class="text-[10px] font-black text-rose-600">最高 12%</span>
+                  </div>
+                  <div class="text-xl font-black text-slate-900 text-right tabular-nums">999,999,999</div>
+                </button>
+
+                <div class="pt-0.5 border-t border-slate-200">
+                  <button data-arena-rank="${room.id}" class="px-4 py-1 rounded-lg border border-slate-500 bg-white hover:bg-slate-100 text-xs font-extrabold">排行</button>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+
+          <div class="pt-2">
+            <button id="btn-arena-back" class="px-6 py-2 rounded-xl bg-white border-2 border-slate-500 text-slate-800 font-bold text-sm hover:bg-slate-100 active:scale-95 transition">返回</button>
+          </div>
+        </div>
+      `;
+
+      document.getElementById('btn-arena-back').addEventListener('click', () => {
+        state.screen = 'lobby';
+        render();
+      });
+      document.getElementById('btn-arena-rule').addEventListener('click', () => {
+        state.modal = { type: 'arena_rule' };
+        renderModal();
+      });
+      document.getElementById('btn-arena-tier-reward').addEventListener('click', () => {
+        state.modal = { type: 'arena_tier_rewards' };
+        renderModal();
+      });
+      document.getElementById('btn-arena-shop').addEventListener('click', () => {
+        state.modal = { type: 'arena_shop' };
+        renderModal();
+      });
+      document.getElementById('btn-arena-history').addEventListener('click', () => {
+        state.arena.historyPage = 1;
+        state.modal = { type: 'arena_history' };
+        renderModal();
+      });
+      root.querySelectorAll('[data-arena-match]').forEach(btn => {
+        btn.addEventListener('click', () => openArenaMatching(btn.getAttribute('data-arena-match')));
+      });
+      root.querySelectorAll('[data-arena-rank]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          state.modal = { type: 'arena_rank', tab: 'rank', room: btn.getAttribute('data-arena-rank') };
+          renderModal();
+        });
+      });
+      root.querySelectorAll('[data-arena-pool]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          state.arena.poolRoom = btn.getAttribute('data-arena-pool');
+          state.screen = 'arena_pool';
+          render();
+        });
+      });
+    }
+
+    // 4.5.5 竞技场奖池瓜分界面
+    function renderArenaPool(root) {
+      const room = state.arena.poolRoom || 'mid';
+      const title = room === 'high' ? '竞技高级场奖池' : '竞技中级场奖池';
+      const records = state.arena.poolRecords[room] || [];
+
+      root.innerHTML = `
+        <div class="flex-1 flex flex-col bg-gradient-to-b from-slate-900 via-indigo-950 to-slate-900 text-white p-3.5 relative overflow-hidden">
+          <!-- 顶部返回箭头 -->
+          <div class="flex items-center justify-between mb-1">
+            <button id="btn-pool-back" class="w-9 h-9 rounded-full bg-white/15 hover:bg-white/25 border border-white/25 flex items-center justify-center text-lg font-black transition active:scale-95">«</button>
+            <div class="w-9"></div>
+          </div>
+
+          <!-- 奖池标题与总额 -->
+          <div class="text-center mb-3">
+            <div class="text-lg font-black text-sky-200 tracking-wide drop-shadow mb-1.5">🪐 ${title}</div>
+            <div class="mx-auto max-w-[300px] bg-slate-900/75 border-2 border-amber-400/70 rounded-2xl py-2.5 px-4 flex items-center justify-center gap-3 shadow-lg">
+              <span class="text-2xl">🪙</span>
+              <span class="text-2xl font-black text-amber-300 tabular-nums tracking-wider">999,999,999</span>
+            </div>
+            <p class="text-[11px] text-sky-200/85 mt-2 leading-relaxed">
+              在竞技场中取得胜利就有机会瓜分奖池<br>
+              段位与档位越高，爆奖比例越高
+            </p>
+          </div>
+
+          <!-- 今日爆奖记录标题栏 -->
+          <div class="flex items-center justify-between mb-2 px-0.5">
+            <div class="bg-gradient-to-r from-indigo-600 to-sky-600 border border-sky-300/60 px-3 py-1 rounded-lg text-xs font-black shadow">✨ 今日爆奖记录</div>
+            <div class="text-[11px] font-bold text-amber-300">最高可瓜分12%的奖池总奖励</div>
+          </div>
+
+          <!-- 爆奖记录列表 -->
+          <div class="flex-1 overflow-y-auto space-y-2 pr-0.5 no-scrollbar">
+            ${records.map(rec => `
+              <div class="relative rounded-2xl bg-gradient-to-r from-slate-100 to-sky-50 text-slate-900 border-2 ${rec.best ? 'border-amber-400' : 'border-sky-300/80'} p-2.5 flex items-center justify-between gap-2 shadow">
+                ${rec.best ? '<span class="absolute -bottom-1 left-2 bg-orange-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full shadow">今日最佳</span>' : ''}
+                <div class="flex items-center gap-2.5 min-w-0">
+                  <div class="relative w-11 h-11 rounded-full bg-indigo-100 border-2 border-indigo-400 flex items-center justify-center text-xl shrink-0">
+                    ${rec.best ? '<span class="absolute -top-2 -right-1 text-sm">👑</span>' : ''}
+                    😎
+                  </div>
+                  <div class="min-w-0">
+                    <div class="text-xs font-black text-slate-900 truncate">${rec.name}</div>
+                    <div class="inline-block bg-indigo-500 text-white text-[9px] font-bold px-2 py-0.5 rounded-full mt-0.5 tabular-nums">${rec.time}</div>
+                    <div class="text-[10px] font-extrabold text-rose-600 mt-0.5">⚔️ ${rec.target}</div>
+                  </div>
+                </div>
+                <div class="bg-amber-100 border border-amber-400 rounded-xl px-2 py-1.5 text-center shrink-0">
+                  <div class="text-lg leading-none">🪙</div>
+                  <div class="text-[10px] font-black text-amber-800 mt-0.5 tabular-nums">${fmtNum(rec.amount)}</div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+
+      document.getElementById('btn-pool-back').addEventListener('click', () => {
+        state.screen = 'arena_lobby';
+        render();
+      });
+    }
+
+    // 4.6 竞技场上下分屏可滑动战斗界面
+    function renderArenaBattle(root) {
+      const b = state.battle;
+      if (!b) return;
+      const expPct = Math.min(100, Math.round((b.exp / b.expMax) * 100));
+      const hpPct = Math.min(100, Math.round((b.hp / b.hpMax) * 100));
+      const oppHpPct = Math.min(100, Math.round((b.oppHp / b.oppHpMax) * 100));
+      const activeAffixHero = b.activeAffixSlot ? b.heroes.find(h => h.slot === b.activeAffixSlot) : null;
+
+      root.innerHTML = `
+        <div class="flex-1 flex flex-col bg-slate-100 text-slate-900 relative overflow-hidden">
+          <!-- 全局固定左上角退出按钮 -->
+          <button id="btn-arena-exit" class="absolute top-2.5 left-2.5 z-30 px-3 py-1 rounded-lg bg-white/95 border-2 border-slate-600 text-xs font-extrabold shadow hover:bg-rose-50 active:scale-95">退出</button>
+
+          <!-- 上下可滑动分屏容器 -->
+          <div id="arena-split-scroller" class="flex-1 overflow-y-auto no-scrollbar scroll-smooth relative">
+            <!-- ========== 上半部分：敌方完整战斗区域 ========== -->
+            <div class="bg-gradient-to-b from-rose-50 to-slate-50 border-b-2 border-slate-400 p-2.5 pt-3">
+              <div class="flex flex-col items-end text-[10px] font-black text-slate-700 mb-1">
+                <div class="bg-white border border-slate-400 rounded-full px-2 py-0.5 mb-0.5">🪙 ${fmtNum(b.oppGold)}</div>
+                <div>档位：${b.oppCannon}</div>
+                <div>段位：${b.oppTierName}</div>
+              </div>
+
+              <!-- 敌方主角位 + 昵称血条 -->
+              <div class="flex flex-col items-center mb-2">
+                <div class="px-3 py-1 rounded-xl border-2 border-rose-400 bg-rose-100/70 text-[10px] font-black text-rose-800 mb-1">敌方角色位</div>
+                <div class="flex items-center gap-2 w-full max-w-[280px]">
+                  <span id="arena-opp-hp-text" class="text-[11px] font-black text-rose-600 shrink-0">❤️${b.oppHp}</span>
+                  <div class="flex-1">
+                    <div class="text-[11px] font-extrabold text-slate-800 leading-none mb-0.5">${b.oppName}</div>
+                    <div class="h-3 bg-slate-200 border border-slate-500 rounded-full overflow-hidden">
+                      <div id="arena-opp-hp-bar" class="h-full bg-lime-400 transition-all duration-200" style="width:${oppHpPct}%"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 敌方 4 英雄槽（镜像朝下） -->
+              <div class="grid grid-cols-4 border-2 border-slate-600 rounded-xl overflow-hidden bg-white max-w-[260px] mx-auto mb-3">
+                ${b.oppHeroes.map((hKey, i) => `
+                  <div class="py-1 border-r last:border-r-0 border-slate-300 flex flex-col items-center justify-center">
+                    ${renderHeroAvatarSvg(hKey, 26)}
+                    <span class="text-[9px] font-black text-slate-600">${i+1}</span>
+                  </div>
+                `).join('')}
+              </div>
+
+              <!-- 敌方战场区 -->
+              <div class="h-44 flex flex-col items-center justify-center text-slate-400 text-xs font-bold border border-dashed border-rose-200 rounded-xl bg-white/40">
+                <div class="text-2xl mb-1">👾 ⚔️</div>
+                <div>敌方战斗区域（向上滑动查看 / 向下滑回己方）</div>
+              </div>
+            </div>
+
+            <!-- ========== 中线：刷怪区 & 竞技场奖池 ========== -->
+            <div class="bg-white border-y-2 border-slate-500 py-1.5 text-center">
+              <div class="text-xs font-black text-slate-700 tracking-widest">刷怪区</div>
+            </div>
+            <div class="flex justify-center -mt-0.5 mb-1">
+              <div class="bg-white border-2 border-slate-700 rounded-b-xl px-5 py-1 text-center shadow">
+                <div class="text-sm font-black text-slate-900 leading-tight">竞技场</div>
+                <div id="arena-pool-gold" class="text-xs font-extrabold text-amber-600 tabular-nums">金币 ${fmtNum(b.poolGold)}</div>
+              </div>
+            </div>
+
+            <!-- ========== 下半部分：己方战斗区域（默认视角） ========== -->
+            <div class="p-2.5 bg-gradient-to-b from-sky-50 to-emerald-50">
+              <!-- 局内经验条 -->
+              <div class="relative h-4 bg-white border border-slate-500 rounded-full overflow-hidden mb-2">
+                <div id="hud-exp-bar" class="h-full bg-sky-400 transition-all duration-300" style="width:${expPct}%"></div>
+                <div id="hud-level" class="absolute inset-0 flex items-center justify-center text-[10px] font-extrabold text-slate-800">${b.level}级</div>
+              </div>
+
+              <!-- 己方战场 + 统计 + 骰子/技能 -->
+              <div id="battle-arena-fx" class="h-56 relative flex items-center justify-center rounded-xl bg-white/50 border border-sky-200 mb-2 overflow-hidden">
+                ${activeAffixHero ? `
+                  <div class="pointer-events-none absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/3 ${state.heroMeta[activeAffixHero.key].rangeSize} rounded-full border-2 border-dashed border-sky-500 bg-sky-400/20 flex items-start justify-center pt-3 z-0">
+                    <span class="bg-sky-600/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow">${activeAffixHero.name} 攻击范围：${state.heroMeta[activeAffixHero.key].range}</span>
+                  </div>
+                ` : ''}
+
+                <div class="flex flex-col items-center">
+                  <div class="text-3xl animate-float">👾</div>
+                  <div class="text-[10px] font-bold text-slate-600 mt-1 bg-white/80 px-2 rounded-full">向上滑动可查看敌方战场 ▲</div>
+                </div>
+
+                <!-- 统计面板 -->
+                <div class="absolute right-2 top-2 flex items-start gap-1.5 z-20">
+                  ${b.statsOpen ? `
+                    <div class="w-40 bg-slate-900/95 text-white rounded-xl p-2 border border-slate-600 shadow-xl text-[10px]">
+                      <div class="text-center font-bold text-amber-300 border-b border-slate-700 pb-1 mb-1.5">双方贡献统计</div>
+                      <div id="hud-stats-rows" class="space-y-1.5">
+                        ${b.heroes.map(h => `
+                          <div>
+                            <div class="flex justify-between"><span>${h.name}</span><span class="text-amber-300 tabular-nums">${fmtNum(h.dmg)}</span></div>
+                            <div class="h-1.5 bg-slate-700 rounded-full overflow-hidden mt-0.5"><div class="h-full bg-amber-400" style="width:${Math.min(100, Math.max(10, Math.round(h.dmg / 20)))}%"></div></div>
+                          </div>
+                        `).join('')}
+                      </div>
+                    </div>
+                  ` : ''}
+                  <button id="btn-toggle-stats" class="w-11 h-11 rounded-xl bg-slate-800/90 border-2 border-amber-400 text-white text-[10px] font-bold flex flex-col items-center justify-center shadow">
+                    <span>📊</span><span>统计</span>
+                  </button>
+                </div>
+
+                <div class="absolute right-2 bottom-2 flex flex-col gap-1.5 z-10">
+                  <button id="btn-dice" class="w-11 h-11 rounded-full border-2 ${b.diceCd > 0 ? 'bg-slate-300 border-slate-400 text-slate-600' : 'bg-white border-slate-600 text-slate-900 hover:bg-amber-50'} text-[11px] font-extrabold shadow transition">
+                    ${b.diceCd > 0 ? `${b.diceCd}s` : '🎲<br>骰子'}
+                  </button>
+                  <button id="btn-hero-skill" class="w-11 h-11 rounded-full border-2 ${b.skillCd > 0 ? 'bg-slate-300 border-slate-400 text-slate-600' : 'bg-white border-slate-600 text-slate-900 hover:bg-amber-50'} text-[10px] font-extrabold leading-tight shadow transition">
+                    ${b.skillCd > 0 ? `${b.skillCd}s` : '角色<br>技能'}
+                  </button>
+                </div>
+              </div>
+
+              <!-- 英雄开关与词条 -->
+              ${b.switchListOpen ? `
+                <div class="mb-1.5 inline-flex items-center gap-1.5 bg-white/95 border-2 border-slate-600 rounded-full px-2.5 py-1 shadow-lg">
+                  ${b.heroes.map(h => `
+                    <button data-toggle-hero="${h.slot}" class="relative w-10 h-10 rounded-full border-2 ${h.enabled ? 'border-emerald-500 bg-emerald-50' : 'border-slate-400 bg-slate-200 opacity-50 grayscale'} flex items-center justify-center transition">
+                      ${renderHeroAvatarSvg(h.key, 32)}
+                      <span class="absolute -bottom-1 text-[8px] font-black px-1 rounded ${h.enabled ? 'bg-emerald-600 text-white' : 'bg-slate-600 text-white'}">${h.enabled ? '开' : '关'}</span>
+                    </button>
+                  `).join('')}
+                </div>
+              ` : ''}
+
+              ${activeAffixHero ? `
+                <div class="mb-1.5 bg-white border-2 border-slate-700 rounded-xl p-2 shadow-xl">
+                  <div class="flex items-center justify-between text-[11px] font-extrabold text-slate-700 border-b border-slate-200 pb-1 mb-1">
+                    <span>${activeAffixHero.name}（Lv.${activeAffixHero.level}）· <span class="text-sky-600">范围: ${state.heroMeta[activeAffixHero.key].range}</span></span>
+                    <button id="btn-close-affix" class="text-slate-400 hover:text-slate-700">✕</button>
+                  </div>
+                  <div class="space-y-1">
+                    ${[0, 1, 2].map(i => `
+                      <div class="text-[11px] px-2 py-1 rounded bg-slate-100 border border-slate-300 font-semibold text-slate-800">词条${i+1}：${activeAffixHero.affixes[i] || '（暂无）'}</div>
+                    `).join('')}
+                  </div>
+                </div>
+              ` : ''}
+
+              <div class="flex items-center gap-2 mb-2">
+                <button id="btn-hero-switch-entry" class="w-12 h-11 rounded-full border-2 ${b.switchListOpen ? 'bg-amber-400 border-amber-600' : 'bg-white border-slate-600'} text-xs font-extrabold shadow shrink-0">开关</button>
+                <div class="flex-1 grid grid-cols-4 border-2 border-slate-600 rounded-xl overflow-hidden bg-white shadow">
+                  ${b.heroes.map(h => `
+                    <button data-affix-slot="${h.slot}" class="relative py-1 border-r last:border-r-0 border-slate-300 flex flex-col items-center justify-center ${b.activeAffixSlot === h.slot ? 'bg-amber-100' : 'hover:bg-slate-50'}">
+                      ${renderHeroAvatarSvg(h.key, 28)}
+                      <span class="text-[10px] font-black text-slate-700 leading-none">Lv${h.level}</span>
+                    </button>
+                  `).join('')}
+                </div>
+              </div>
+
+              <!-- 己方血量、主角模型、炮口倍率 -->
+              <div class="flex items-center gap-2 mb-2">
+                <span id="arena-my-hp-text" class="text-xs font-black text-rose-600">❤️ ${b.hp}</span>
+                <div class="flex-1 h-3.5 bg-slate-200 border border-slate-400 rounded-full overflow-hidden">
+                  <div id="arena-my-hp-bar" class="h-full bg-lime-400" style="width:${hpPct}%"></div>
+                </div>
+              </div>
+
+              <div class="flex items-center justify-between gap-2">
+                <div class="w-20"></div>
+                <div class="relative flex flex-col items-center justify-center px-3 py-1 rounded-xl border-2 border-slate-500 bg-gradient-to-b from-slate-50 to-slate-200 shadow-inner">
+                  <svg width="40" height="38" viewBox="0 0 48 48">
+                    <ellipse cx="24" cy="43" rx="14" ry="3.5" fill="#94a3b8" fill-opacity="0.5"/>
+                    <path d="M15 39 L17 24 L31 24 L33 39 Z" fill="#3b82f6" stroke="#1e293b" stroke-width="2"/>
+                    <circle cx="24" cy="15" r="8.5" fill="#fde68a" stroke="#1e293b" stroke-width="2"/>
+                    <path d="M15 13 C16 5, 32 5, 33 13 Z" fill="#f59e0b" stroke="#1e293b" stroke-width="2"/>
+                  </svg>
+                  <span class="text-[9px] font-black text-slate-600 -mt-1">主角模型</span>
+                </div>
+                <div class="flex items-center gap-1">
+                  <button id="btn-cannon-minus" class="w-7 h-7 rounded-lg border-2 border-slate-700 bg-white font-black text-base leading-none">-</button>
+                  <div class="px-2 h-7 rounded-lg border-2 border-slate-400 bg-slate-50 flex items-center gap-1 text-xs font-black tabular-nums"><span>💠</span><span>${b.cannonTier}</span></div>
+                  <button id="btn-cannon-plus" class="w-7 h-7 rounded-lg border-2 border-slate-700 bg-white font-black text-base leading-none">+</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 全局固定底部货币栏 -->
+          <div class="bg-white border-t-2 border-slate-400 px-3 py-1.5 flex items-center justify-between text-xs font-black text-slate-800 z-30">
+            <div>🪙 金币 ${fmtNum(state.gold)}</div>
+            <div>${fmtNum(state.redGem)} 💎 红钻</div>
+          </div>
+        </div>
+      `;
+
+      document.getElementById('btn-arena-exit').addEventListener('click', () => {
+        b.paused = true;
+        state.modal = { type: 'arena_exit_confirm' };
+        renderModal();
+      });
+      document.getElementById('btn-toggle-stats').addEventListener('click', () => { b.statsOpen = !b.statsOpen; render(); });
+      document.getElementById('btn-dice').addEventListener('click', () => {
+        if (b.diceCd > 0) return;
+        b.diceCd = 8;
+        const roll = Math.floor(Math.random() * 6) + 1;
+        b.oppHp = Math.max(0, b.oppHp - roll * 60);
+        showToast(`🎲 骰出 ${roll} 点！对敌方造成额外打击`, 'success');
+        render();
+      });
+      document.getElementById('btn-hero-skill').addEventListener('click', () => {
+        if (b.skillCd > 0) return;
+        b.skillCd = 10;
+        b.oppHp = Math.max(0, b.oppHp - 320);
+        showToast('⚡ 释放角色大招！压制对手防线', 'success');
+        render();
+      });
+      document.getElementById('btn-hero-switch-entry').addEventListener('click', () => { b.switchListOpen = !b.switchListOpen; render(); });
+      root.querySelectorAll('[data-toggle-hero]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const h = b.heroes.find(x => x.slot === Number(btn.getAttribute('data-toggle-hero')));
+          if (h) { h.enabled = !h.enabled; render(); }
+        });
+      });
+      root.querySelectorAll('[data-affix-slot]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const slot = Number(btn.getAttribute('data-affix-slot'));
+          b.activeAffixSlot = b.activeAffixSlot === slot ? null : slot;
+          render();
+        });
+      });
+      const closeAffix = document.getElementById('btn-close-affix');
+      if (closeAffix) closeAffix.addEventListener('click', () => { b.activeAffixSlot = null; render(); });
+      document.getElementById('btn-cannon-minus').addEventListener('click', () => {
+        if (b.cannonTier > 100) { b.cannonTier -= 100; render(); }
+      });
+      document.getElementById('btn-cannon-plus').addEventListener('click', () => {
+        if (b.cannonTier < 300) { b.cannonTier += 100; render(); }
+      });
+    }
+
+    function renderArenaBattleDynamicParts() {
+      const b = state.battle;
+      if (!b) return;
+      const g = (id) => document.getElementById(id);
+      if (g('hud-level')) g('hud-level').textContent = `${b.level}级`;
+      if (g('hud-exp-bar')) g('hud-exp-bar').style.width = `${Math.min(100, Math.round((b.exp / b.expMax) * 100))}%`;
+      if (g('arena-opp-hp-text')) g('arena-opp-hp-text').textContent = `❤️${b.oppHp}`;
+      if (g('arena-opp-hp-bar')) g('arena-opp-hp-bar').style.width = `${Math.max(0, Math.round(b.oppHp / b.oppHpMax * 100))}%`;
+      if (g('arena-my-hp-text')) g('arena-my-hp-text').textContent = `❤️ ${b.hp}`;
+      if (g('arena-my-hp-bar')) g('arena-my-hp-bar').style.width = `${Math.max(0, Math.round(b.hp / b.hpMax * 100))}%`;
+      if (g('arena-pool-gold')) g('arena-pool-gold').textContent = `金币 ${fmtNum(b.poolGold)}`;
+      if (g('btn-dice')) {
+        g('btn-dice').innerHTML = b.diceCd > 0 ? `${b.diceCd}s` : '🎲<br>骰子';
+      }
+      if (g('btn-hero-skill')) {
+        g('btn-hero-skill').innerHTML = b.skillCd > 0 ? `${b.skillCd}s` : '角色<br>技能';
+      }
+    }
+
+    // 4.7 奖池场大厅
+    function renderPoolLobby(root) {
+      root.innerHTML = `
+        <div class="chapter-bg text-slate-900 flex-1 flex flex-col p-3.5 overflow-hidden">
+          <div class="text-center mb-3">
+            <div class="inline-flex items-center gap-1.5">
+              <h1 class="text-2xl font-black text-slate-800">奖池场大厅</h1>
+              <button id="btn-pool-rule" class="w-6 h-6 rounded-full border-2 border-slate-700 bg-white text-xs font-black flex items-center justify-center hover:bg-amber-50">?</button>
+            </div>
+          </div>
+
+          <div class="flex-1 overflow-y-auto space-y-3 no-scrollbar">
+            ${[
+              { id: 'mid', name: '奖池中级场', reqTier: '档位要求：1W', reqGold: '金币要求：500W', pct: '12%' },
+              { id: 'high', name: '奖池高级场', reqTier: '档位要求：1W', reqGold: '金币要求：500W', pct: '20%' }
+            ].map(room => `
+              <div data-enter-pool-room="${room.id}" class="bg-white border-2 border-slate-700 hover:border-amber-500 rounded-2xl p-3 space-y-2 shadow-xs cursor-pointer transition">
+                <div class="flex items-start justify-between">
+                  <div>
+                    <h2 class="text-lg font-black text-slate-900">${room.name}</h2>
+                    <div class="text-[11px] font-bold text-slate-600 mt-1 space-y-0.5">
+                      <div>${room.reqTier}</div>
+                      <div>${room.reqGold}</div>
+                    </div>
+                  </div>
+                  <span class="px-3 py-1 rounded-lg bg-amber-400 border border-amber-600 text-[11px] font-black text-slate-900">点击进入</span>
+                </div>
+
+                <div class="border-b border-slate-300 pb-2">
+                  <div class="flex items-center justify-between">
+                    <span class="text-sm font-extrabold text-slate-800">奖池瓜分</span>
+                    <span class="text-[10px] font-black text-rose-600">最高 ${room.pct}</span>
+                  </div>
+                  <div class="text-xl font-black text-slate-900 text-right tabular-nums">999,999,999</div>
+                </div>
+
+                <div class="flex items-center justify-between pt-0.5">
+                  <div>
+                    <div class="text-[11px] font-extrabold text-slate-700 mb-1">本周最佳</div>
+                    <div class="flex items-center gap-2">
+                      <span class="w-8 h-8 rounded-full border border-slate-500 bg-slate-100 flex items-center justify-center text-sm">😎</span>
+                      <div class="text-[11px] font-bold">
+                        <div>寂寞的雪糕</div>
+                        <div class="text-slate-600 tabular-nums">99,999</div>
+                      </div>
+                    </div>
+                  </div>
+                  <button data-pool-detail="${room.id}" class="px-3 py-1.5 rounded-lg border border-slate-500 bg-white hover:bg-slate-100 text-xs font-extrabold">查看详情</button>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+
+          <div class="pt-2">
+            <button id="btn-pool-lobby-back" class="px-6 py-2 rounded-xl bg-white border-2 border-slate-500 text-slate-800 font-bold text-sm hover:bg-slate-100 active:scale-95 transition">返回</button>
+          </div>
+        </div>
+      `;
+
+      document.getElementById('btn-pool-lobby-back').addEventListener('click', () => {
+        state.screen = 'lobby';
+        render();
+      });
+      document.getElementById('btn-pool-rule').addEventListener('click', () => {
+        state.modal = { type: 'pool_rule' };
+        renderModal();
+      });
+      root.querySelectorAll('[data-pool-detail]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          state.poolField.room = btn.getAttribute('data-pool-detail');
+          state.screen = 'pool_detail';
+          render();
+        });
+      });
+      root.querySelectorAll('[data-enter-pool-room]').forEach(card => {
+        card.addEventListener('click', () => {
+          startPoolBattle(card.getAttribute('data-enter-pool-room'));
+        });
+      });
+    }
+
+    // 4.8 奖池场查看详情（复用爆奖记录样式）
+    function renderPoolDetail(root) {
+      const room = state.poolField.room || 'mid';
+      const title = room === 'high' ? '奖池高级场奖池' : '奖池中级场奖池';
+      const maxPct = room === 'high' ? '20%' : '12%';
+      const records = state.poolField.records[room] || [];
+
+      root.innerHTML = `
+        <div class="flex-1 flex flex-col bg-gradient-to-b from-slate-900 via-teal-950 to-slate-900 text-white p-3.5 relative overflow-hidden">
+          <div class="flex items-center justify-between mb-1">
+            <button id="btn-pdetail-back" class="w-9 h-9 rounded-full bg-white/15 hover:bg-white/25 border border-white/25 flex items-center justify-center text-lg font-black">«</button>
+            <div class="w-9"></div>
+          </div>
+          <div class="text-center mb-3">
+            <div class="text-lg font-black text-emerald-200 tracking-wide mb-1.5">🏆 ${title}</div>
+            <div class="mx-auto max-w-[300px] bg-slate-900/75 border-2 border-amber-400/70 rounded-2xl py-2.5 px-4 flex items-center justify-center gap-3 shadow-lg">
+              <span class="text-2xl">🪙</span>
+              <span class="text-2xl font-black text-amber-300 tabular-nums">999,999,999</span>
+            </div>
+            <p class="text-[11px] text-emerald-200/85 mt-2">击破中央扭蛋机或击败Boss即可参与瓜分奖池</p>
+          </div>
+          <div class="flex items-center justify-between mb-2 px-0.5">
+            <div class="bg-gradient-to-r from-emerald-600 to-teal-600 border border-emerald-300/60 px-3 py-1 rounded-lg text-xs font-black">✨ 今日爆奖记录</div>
+            <div class="text-[11px] font-bold text-amber-300">最高可瓜分${maxPct}的奖池总奖励</div>
+          </div>
+          <div class="flex-1 overflow-y-auto space-y-2 pr-0.5 no-scrollbar">
+            ${records.map(rec => `
+              <div class="relative rounded-2xl bg-gradient-to-r from-slate-100 to-emerald-50 text-slate-900 border-2 ${rec.best ? 'border-amber-400' : 'border-emerald-300/80'} p-2.5 flex items-center justify-between gap-2 shadow">
+                ${rec.best ? '<span class="absolute -bottom-1 left-2 bg-orange-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full">本周最佳</span>' : ''}
+                <div class="flex items-center gap-2.5 min-w-0">
+                  <div class="w-11 h-11 rounded-full bg-emerald-100 border-2 border-emerald-400 flex items-center justify-center text-xl shrink-0">😎</div>
+                  <div class="min-w-0">
+                    <div class="text-xs font-black truncate">${rec.name}</div>
+                    <div class="inline-block bg-teal-600 text-white text-[9px] font-bold px-2 py-0.5 rounded-full mt-0.5 tabular-nums">${rec.time}</div>
+                    <div class="text-[10px] font-extrabold text-rose-600 mt-0.5">🎰 ${rec.target}</div>
+                  </div>
+                </div>
+                <div class="bg-amber-100 border border-amber-400 rounded-xl px-2 py-1.5 text-center shrink-0">
+                  <div class="text-lg leading-none">🪙</div>
+                  <div class="text-[10px] font-black text-amber-800 mt-0.5 tabular-nums">${fmtNum(rec.amount)}</div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+      document.getElementById('btn-pdetail-back').addEventListener('click', () => {
+        state.screen = 'pool_lobby';
+        render();
+      });
+    }
+
+    // 4.9 奖池场同屏战斗界面
+    function renderPoolBattle(root) {
+      const b = state.battle;
+      if (!b) return;
+      const hpPct = Math.min(100, Math.round((b.hp / b.hpMax) * 100));
+      const oppHpPct = Math.min(100, Math.round((b.oppHp / b.oppHpMax) * 100));
+      const activeAffixHero = b.activeAffixSlot ? b.heroes.find(h => h.slot === b.activeAffixSlot) : null;
+      const pkTotal = Math.max(1, b.myPkDmg + b.oppPkDmg);
+      const oppPkPct = Math.round((b.oppPkDmg / pkTotal) * 100);
+
+      root.innerHTML = `
+        <div class="flex-1 flex flex-col justify-between bg-gradient-to-b from-slate-100 via-sky-50 to-emerald-50 text-slate-900 relative overflow-hidden">
+          <!-- 上方对手区域 -->
+          <div class="p-2 bg-white/90 border-b border-slate-300 relative z-10">
+            <div class="flex items-center justify-between text-[10px] font-black mb-1">
+              <div class="bg-slate-100 border border-slate-400 rounded-full px-2 py-0.5">💎 ${fmtNum(b.oppGem)}</div>
+              <div class="text-right">
+                <div class="bg-slate-100 border border-slate-400 rounded-full px-2 py-0.5">🪙 ${fmtNum(b.oppGold)}</div>
+                <div class="text-slate-600 mt-0.5">档位：${b.oppCannon}</div>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between gap-2">
+              <button id="btn-pool-exit" class="px-2.5 py-1 rounded-lg bg-white border-2 border-slate-500 text-xs font-extrabold hover:bg-rose-50">退出</button>
+              <div class="flex-1 flex flex-col items-center">
+                <div class="px-2.5 py-0.5 rounded-lg border border-rose-400 bg-rose-50 text-[10px] font-black text-rose-700 mb-0.5">敌方角色位</div>
+                <div class="flex items-center gap-1.5 w-full max-w-[210px]">
+                  <span class="text-[10px] font-black text-rose-600">❤️${b.oppHp}</span>
+                  <div class="flex-1">
+                    <div class="text-[10px] font-extrabold leading-none">${b.oppName}</div>
+                    <div class="h-2.5 bg-slate-200 border border-slate-400 rounded-full overflow-hidden mt-0.5">
+                      <div class="h-full bg-lime-400" style="width:${oppHpPct}%"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <button id="btn-pool-invite" class="px-2.5 py-1 rounded-lg bg-amber-400 border-2 border-slate-700 text-[11px] font-black leading-tight hover:bg-amber-300 active:scale-95">邀请<br>PK</button>
+            </div>
+
+            <div class="grid grid-cols-4 border border-slate-500 rounded-lg overflow-hidden bg-white max-w-[200px] mx-auto mt-1.5">
+              ${b.oppHeroes.map((hKey, i) => `
+                <div class="py-0.5 border-r last:border-r-0 border-slate-300 flex items-center justify-center">
+                  ${renderHeroAvatarSvg(hKey, 20)}
+                </div>
+              `).join('')}
+            </div>
+          </div>
+
+          <!-- 中央战场（常规态 vs 扭蛋机PK争夺态） -->
+          <div id="battle-arena-fx" class="flex-1 relative flex flex-col items-center justify-center p-2 overflow-hidden">
+            ${activeAffixHero ? `
+              <div class="pointer-events-none absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/3 ${state.heroMeta[activeAffixHero.key].rangeSize} rounded-full border-2 border-dashed border-sky-500 bg-sky-400/20 flex items-start justify-center pt-3 z-0">
+                <span class="bg-sky-600/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow">${activeAffixHero.name} 攻击范围：${state.heroMeta[activeAffixHero.key].range}</span>
+              </div>
+            ` : ''}
+
+            <!-- 本局奖池框 -->
+            <div class="absolute right-2 top-2 bg-white/95 border border-slate-500 rounded-lg px-2 py-1 text-[10px] font-black shadow-xs z-10">
+              <div class="text-rose-600 tabular-nums">红钻 ${fmtNum(b.poolGem)}</div>
+              <div class="text-amber-600 tabular-nums">金币 ${fmtNum(b.poolGold)}</div>
+            </div>
+
+            ${b.pkActive ? `
+              <!-- PK 争夺态：扭蛋机奖池 + 30s倒计时 + 双方对比条 -->
+              <div class="relative z-10 flex flex-col items-center w-full max-w-[270px] bg-white/85 border-2 border-amber-400 rounded-2xl p-2.5 shadow-lg">
+                <div id="pool-pk-cd" class="text-xs font-black text-rose-600 mb-1">${b.pkTimeLeft}s后结算</div>
+                <div class="text-5xl animate-float mb-1">🎰</div>
+                <div class="w-full flex h-6 rounded-lg overflow-hidden border border-slate-700 text-[10px] font-black">
+                  <div id="pool-pk-opp-bar" class="bg-rose-400 text-white flex items-center justify-center transition-all" style="width:${oppPkPct}%">敌方: ${fmtNum(b.oppPkDmg)}</div>
+                  <div id="pool-pk-my-bar" class="bg-cyan-300 text-slate-900 flex-1 flex items-center justify-center">我方: ${fmtNum(b.myPkDmg)}</div>
+                </div>
+              </div>
+            ` : `
+              <div class="flex flex-col items-center">
+                <div class="text-4xl animate-float">👾</div>
+                <div class="text-[10px] font-bold text-slate-600 bg-white/80 px-2.5 py-0.5 rounded-full mt-1">奖池刷怪中 · 可随时点击右上角「邀请PK」</div>
+              </div>
+            `}
+
+            <!-- 左侧阵容按钮 -->
+            <button id="btn-pool-lineup" class="absolute left-2 bottom-2 px-2.5 py-1 rounded-lg bg-white border-2 border-slate-500 text-xs font-extrabold shadow hover:bg-amber-50 z-10">阵容</button>
+
+            <!-- 右侧 自动 / 狂暴 / 锁定 / 角色技能 -->
+            <div class="absolute right-2 bottom-2 flex flex-col gap-1 z-10">
+              <button id="btn-pool-auto" class="w-10 h-10 rounded-full border-2 ${b.autoAtk ? 'bg-amber-400 border-amber-600' : 'bg-white border-slate-500'} text-[10px] font-black shadow">自动</button>
+              <button id="btn-pool-rage" class="w-10 h-10 rounded-full border-2 ${b.rage ? 'bg-rose-500 text-white border-rose-700' : 'bg-white border-slate-500'} text-[10px] font-black shadow">狂暴</button>
+              <button id="btn-pool-lock" class="w-10 h-10 rounded-full border-2 ${b.lockTarget ? 'bg-sky-400 text-white border-sky-600' : 'bg-white border-slate-500'} text-[10px] font-black shadow">锁定</button>
+              <button id="btn-hero-skill" class="w-10 h-10 rounded-full border-2 ${b.skillCd > 0 ? 'bg-slate-300 border-slate-400 text-slate-600' : 'bg-white border-slate-600'} text-[9px] font-black leading-tight shadow">
+                ${b.skillCd > 0 ? `${b.skillCd}s` : '角色<br>技能'}
+              </button>
+            </div>
+          </div>
+
+          <!-- 己方英雄开关与槽位 -->
+          <div class="px-2 pb-1 relative z-20">
+            ${b.switchListOpen ? `
+              <div class="mb-1 inline-flex items-center gap-1.5 bg-white/95 border-2 border-slate-600 rounded-full px-2.5 py-1 shadow-lg">
+                ${b.heroes.map(h => `
+                  <button data-toggle-hero="${h.slot}" class="relative w-9 h-9 rounded-full border-2 ${h.enabled ? 'border-emerald-500 bg-emerald-50' : 'border-slate-400 bg-slate-200 opacity-50 grayscale'} flex items-center justify-center">
+                    ${renderHeroAvatarSvg(h.key, 28)}
+                  </button>
+                `).join('')}
+              </div>
+            ` : ''}
+
+            ${activeAffixHero ? `
+              <div class="mb-1 bg-white border-2 border-slate-700 rounded-xl p-2 shadow-xl">
+                <div class="flex items-center justify-between text-[11px] font-extrabold text-slate-700 border-b border-slate-200 pb-1 mb-1">
+                  <span>${activeAffixHero.name}（Lv.${activeAffixHero.level}）· <span class="text-sky-600">范围: ${state.heroMeta[activeAffixHero.key].range}</span></span>
+                  <button id="btn-close-affix" class="text-slate-400 hover:text-slate-700">✕</button>
+                </div>
+                <div class="space-y-1">
+                  ${[0, 1, 2].map(i => `<div class="text-[11px] px-2 py-0.5 rounded bg-slate-100 border border-slate-300 font-semibold">词条${i+1}：${activeAffixHero.affixes[i] || '（暂无）'}</div>`).join('')}
+                </div>
+              </div>
+            ` : ''}
+
+            <div class="flex items-center gap-2">
+              <button id="btn-hero-switch-entry" class="w-11 h-10 rounded-full border-2 ${b.switchListOpen ? 'bg-amber-400 border-amber-600' : 'bg-white border-slate-600'} text-xs font-extrabold shadow shrink-0">开关</button>
+              <div class="flex-1 grid grid-cols-4 border-2 border-slate-600 rounded-xl overflow-hidden bg-white shadow">
+                ${b.heroes.map(h => `
+                  <button data-affix-slot="${h.slot}" class="py-1 border-r last:border-r-0 border-slate-300 flex flex-col items-center justify-center ${b.activeAffixSlot === h.slot ? 'bg-amber-100' : ''}">
+                    ${renderHeroAvatarSvg(h.key, 24)}
+                    <span class="text-[9px] font-black text-slate-700 leading-none">Lv${h.level}</span>
+                  </button>
+                `).join('')}
+              </div>
+            </div>
+          </div>
+
+          <!-- 己方血量、主角模型、炮口倍率、货币栏 -->
+          <div class="bg-white/95 border-t border-slate-300 px-2.5 py-1.5 z-10">
+            <div class="flex items-center gap-2 mb-1.5">
+              <span id="pool-my-hp-text" class="text-xs font-black text-rose-600">❤️ ${b.hp}</span>
+              <div class="flex-1 h-3 bg-slate-200 border border-slate-400 rounded-full overflow-hidden">
+                <div id="pool-my-hp-bar" class="h-full bg-lime-400" style="width:${hpPct}%"></div>
+              </div>
+            </div>
+            <div class="flex items-center justify-between gap-2 mb-1.5">
+              <div class="w-20"></div>
+              <div class="relative flex flex-col items-center justify-center px-3 py-0.5 rounded-xl border-2 border-slate-500 bg-gradient-to-b from-slate-50 to-slate-200 shadow-inner">
+                <svg width="36" height="34" viewBox="0 0 48 48">
+                  <ellipse cx="24" cy="43" rx="14" ry="3.5" fill="#94a3b8" fill-opacity="0.5"/>
+                  <path d="M15 39 L17 24 L31 24 L33 39 Z" fill="#3b82f6" stroke="#1e293b" stroke-width="2"/>
+                  <circle cx="24" cy="15" r="8.5" fill="#fde68a" stroke="#1e293b" stroke-width="2"/>
+                  <path d="M15 13 C16 5, 32 5, 33 13 Z" fill="#f59e0b" stroke="#1e293b" stroke-width="2"/>
+                </svg>
+                <span class="text-[8px] font-black text-slate-600 -mt-1">主角模型</span>
+              </div>
+              <div class="flex items-center gap-1">
+                <button id="btn-cannon-minus" class="w-7 h-7 rounded-lg border-2 border-slate-700 bg-white font-black text-base leading-none">-</button>
+                <div class="px-2 h-7 rounded-lg border-2 border-slate-400 bg-slate-50 flex items-center gap-1 text-xs font-black tabular-nums"><span>💠</span><span>${b.cannonTier}</span></div>
+                <button id="btn-cannon-plus" class="w-7 h-7 rounded-lg border-2 border-slate-700 bg-white font-black text-base leading-none">+</button>
+              </div>
+            </div>
+            <div class="flex items-center justify-between text-xs font-black text-slate-800 border-t border-slate-200 pt-1">
+              <div>🪙 金币 ${fmtNum(state.gold)}</div>
+              <div>${fmtNum(state.redGem)} 💎 红钻</div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      document.getElementById('btn-pool-exit').addEventListener('click', () => exitBattleTo('pool_lobby'));
+      document.getElementById('btn-pool-invite').addEventListener('click', sendPoolPkInvite);
+      document.getElementById('btn-pool-lineup').addEventListener('click', () => {
+        b.paused = true;
+        state.modal = { type: 'battle_placeholder', title: '调整阵容' };
+        renderModal();
+      });
+      document.getElementById('btn-pool-auto').addEventListener('click', () => { b.autoAtk = !b.autoAtk; render(); });
+      document.getElementById('btn-pool-rage').addEventListener('click', () => { b.rage = !b.rage; showToast(b.rage ? '🔥 开启狂暴模式' : '关闭狂暴模式'); render(); });
+      document.getElementById('btn-pool-lock').addEventListener('click', () => { b.lockTarget = !b.lockTarget; showToast(b.lockTarget ? '🎯 锁定高价值目标' : '取消锁定'); render(); });
+      document.getElementById('btn-hero-skill').addEventListener('click', () => {
+        if (b.skillCd > 0) return;
+        b.skillCd = 10;
+        if (b.pkActive) b.myPkDmg += 450;
+        showToast('⚡ 释放角色大招！', 'success');
+        render();
+      });
+      document.getElementById('btn-hero-switch-entry').addEventListener('click', () => { b.switchListOpen = !b.switchListOpen; render(); });
+      root.querySelectorAll('[data-toggle-hero]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const h = b.heroes.find(x => x.slot === Number(btn.getAttribute('data-toggle-hero')));
+          if (h) { h.enabled = !h.enabled; render(); }
+        });
+      });
+      root.querySelectorAll('[data-affix-slot]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const slot = Number(btn.getAttribute('data-affix-slot'));
+          b.activeAffixSlot = b.activeAffixSlot === slot ? null : slot;
+          render();
+        });
+      });
+      const closeAffix = document.getElementById('btn-close-affix');
+      if (closeAffix) closeAffix.addEventListener('click', () => { b.activeAffixSlot = null; render(); });
+      document.getElementById('btn-cannon-minus').addEventListener('click', () => { if (b.cannonTier > 100) { b.cannonTier -= 100; render(); } });
+      document.getElementById('btn-cannon-plus').addEventListener('click', () => { if (b.cannonTier < 300) { b.cannonTier += 100; render(); } });
+    }
+
+    function renderPoolBattleDynamicParts() {
+      const b = state.battle;
+      if (!b) return;
+      const g = (id) => document.getElementById(id);
+      if (g('pool-my-hp-text')) g('pool-my-hp-text').textContent = `❤️ ${b.hp}`;
+      if (g('pool-my-hp-bar')) g('pool-my-hp-bar').style.width = `${Math.max(0, Math.round(b.hp / b.hpMax * 100))}%`;
+      if (g('btn-hero-skill')) g('btn-hero-skill').innerHTML = b.skillCd > 0 ? `${b.skillCd}s` : '角色<br>技能';
+      if (b.pkActive) {
+        const tot = Math.max(1, b.myPkDmg + b.oppPkDmg);
+        const oppPct = Math.round((b.oppPkDmg / tot) * 100);
+        if (g('pool-pk-cd')) g('pool-pk-cd').textContent = `${b.pkTimeLeft}s后结算`;
+        if (g('pool-pk-opp-bar')) {
+          g('pool-pk-opp-bar').style.width = `${oppPct}%`;
+          g('pool-pk-opp-bar').textContent = `敌方: ${fmtNum(b.oppPkDmg)}`;
+        }
+        if (g('pool-pk-my-bar')) g('pool-pk-my-bar').textContent = `我方: ${fmtNum(b.myPkDmg)}`;
+      }
+    }
+
+    // 5. 占位界面（带返回按钮）
+    function renderPlaceholderScreen(root) {
+      root.innerHTML = `
+        <div class="flex-1 bg-slate-100 text-slate-900 flex flex-col justify-between p-5">
+          <div class="text-center pt-4">
+            <div class="inline-block px-3 py-1 rounded-full bg-slate-200 text-xs font-bold text-slate-600 mb-2">系统占位页面</div>
+            <h1 class="text-2xl font-black text-slate-800">${state.placeholderTitle}</h1>
+          </div>
+          <div class="bg-white border-2 border-dashed border-slate-300 rounded-2xl p-6 text-center space-y-2 shadow-xs">
+            <div class="text-4xl">🛠️</div>
+            <div class="text-sm font-bold text-slate-700">「${state.placeholderTitle}」界面功能待后续补充</div>
+            <p class="text-xs text-slate-500">当前原型已打通闯关主链路，此处作为占位模块供流程跳转演示。</p>
+          </div>
+          <div>
+            <button id="btn-placeholder-back" class="w-full py-3 rounded-xl bg-slate-800 text-white font-bold text-sm hover:bg-slate-700 active:scale-95 transition">返回</button>
+          </div>
+        </div>
+      `;
+      document.getElementById('btn-placeholder-back').addEventListener('click', () => {
+        state.screen = state.placeholderFrom || 'lobby';
+        render();
+      });
+    }
+
+    // ==================== 弹窗渲染 ====================
+    function renderModal() {
+      const mRoot = document.getElementById('modal-root');
+      if (!state.modal) {
+        mRoot.classList.add('hidden');
+        mRoot.innerHTML = '';
+        return;
+      }
+      mRoot.classList.remove('hidden');
+      const m = state.modal;
+
+      if (m.type === 'pause') {
+        mRoot.innerHTML = `
+          <div class="w-full max-w-xs bg-white text-slate-900 rounded-2xl p-5 shadow-2xl border-2 border-slate-700 text-center space-y-3">
+            <h2 class="text-xl font-black">战斗暂停</h2>
+            <p class="text-xs text-slate-500">当前进度：${state.battle.stageName} · 波次 ${state.battle.wave}/${state.battle.maxWave}</p>
+            <div class="space-y-2 pt-2">
+              <button id="m-resume" class="w-full py-2.5 rounded-xl bg-amber-400 text-slate-900 font-extrabold text-sm hover:bg-amber-300">继续战斗</button>
+              <button id="m-restart" class="w-full py-2.5 rounded-xl bg-slate-100 border border-slate-400 text-slate-800 font-bold text-sm hover:bg-slate-200">重新开始</button>
+              <button id="m-exit" class="w-full py-2.5 rounded-xl bg-rose-50 border border-rose-300 text-rose-700 font-bold text-sm hover:bg-rose-100">退出战斗</button>
+            </div>
+          </div>
+        `;
+        document.getElementById('m-resume').addEventListener('click', () => {
+          state.modal = null;
+          state.battle.paused = false;
+          renderModal();
+        });
+        document.getElementById('m-restart').addEventListener('click', () => startBattle(state.battle.stageId));
+        document.getElementById('m-exit').addEventListener('click', () => triggerDefeat());
+      }
+      else if (m.type === 'battle_placeholder') {
+        mRoot.innerHTML = `
+          <div class="w-full max-w-xs bg-white text-slate-900 rounded-2xl p-5 shadow-2xl border-2 border-slate-700 text-center space-y-3">
+            <div class="text-xs font-bold text-amber-600">战斗已暂停</div>
+            <h2 class="text-lg font-black">${m.title}（占位弹窗）</h2>
+            <p class="text-xs text-slate-500">关闭此弹窗后将继续当前战斗。</p>
+            <button id="m-close-ph" class="w-full py-2.5 rounded-xl bg-slate-800 text-white font-bold text-sm hover:bg-slate-700">返回战斗</button>
+          </div>
+        `;
+        document.getElementById('m-close-ph').addEventListener('click', () => {
+          state.modal = null;
+          state.battle.paused = false;
+          renderModal();
+        });
+      }
+      else if (m.type === 'skill_choice') {
+        const b = state.battle;
+        mRoot.innerHTML = `
+          <div class="w-full bg-white text-slate-900 rounded-2xl p-4 shadow-2xl border-2 border-slate-700">
+            <h2 class="text-xl font-black text-center mb-3">选择技能</h2>
+            <div class="grid grid-cols-3 gap-2 mb-4">
+              ${m.cards.map((c, idx) => `
+                <button data-pick-skill="${idx}" class="relative border-2 ${idx === 0 ? 'border-orange-500 bg-orange-50/40' : 'border-slate-400 bg-white'} rounded-xl p-2 flex flex-col items-center text-center hover:bg-amber-50 active:scale-95 transition min-h-[145px]">
+                  ${idx === 0 ? '<span class="absolute -top-2 -left-1.5 bg-orange-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded shadow">荐</span>' : ''}
+                  <div class="w-11 h-11 rounded-lg border border-slate-300 bg-slate-100 flex items-center justify-center text-xl mb-2">
+                    ${state.heroMeta[c.targetHero].symbol}
+                  </div>
+                  <div class="text-[11px] font-extrabold text-slate-900 leading-tight mb-1">${c.title}</div>
+                  <div class="text-[10px] text-slate-600 leading-snug">${c.desc}</div>
+                </button>
+              `).join('')}
+            </div>
+            <div class="text-center space-y-2">
+              <div class="text-xs font-semibold text-slate-600">本局剩余免费刷新次数 ${b.freeRefreshLeft}/${b.freeRefreshMax}</div>
+              <button id="m-skill-refresh" class="px-6 py-2 rounded-xl border-2 border-slate-600 font-extrabold text-xs ${b.freeRefreshLeft > 0 ? 'bg-white hover:bg-slate-100 text-slate-800' : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-400'} active:scale-95 transition">
+                ${b.freeRefreshLeft > 0 ? '刷新' : (b.mode === 'dungeon' ? '看广告刷新' : '💎50 / 看广告刷新')}
+              </button>
+              <div id="skill-auto-cd" class="text-xs font-bold text-slate-500">${m.countdown}s后自动为您选择</div>
+            </div>
+          </div>
+        `;
+        mRoot.querySelectorAll('[data-pick-skill]').forEach(btn => {
+          btn.addEventListener('click', () => selectSkillCard(Number(btn.getAttribute('data-pick-skill'))));
+        });
+        document.getElementById('m-skill-refresh').addEventListener('click', refreshSkillCards);
+      }
+      else if (m.type === 'victory') {
+        const b = state.battle;
+        const isDungeon = b.mode === 'dungeon';
+        const skillStats = [
+          { name: '风刃', icon: '🍃', dmg: Math.round((b.heroes[0]?.dmg || 1200) * 1.1) },
+          { name: '烈焰', icon: '🔥', dmg: Math.round((b.heroes[1]?.dmg || 980) * 1.0) },
+          { name: '冰瀑', icon: '❄️', dmg: Math.round((b.heroes[2]?.dmg || 860) * 0.95) },
+          { name: '雷链', icon: '⚡', dmg: Math.round((b.heroes[3]?.dmg || 740) * 0.9) },
+          { name: '大招', icon: '💥', dmg: 1520 },
+          { name: '骰子', icon: '🎲', dmg: 640 }
+        ];
+        mRoot.innerHTML = `
+          <div class="w-full bg-white text-slate-900 rounded-2xl p-4 shadow-2xl border-2 border-slate-700 space-y-3">
+            <div class="text-center">
+              <div class="inline-block bg-amber-400 border-2 border-slate-800 px-6 py-1 rounded-xl text-xl font-black">${isDungeon ? '战斗胜利' : '挑战成功'}</div>
+              <div class="text-sm font-extrabold text-slate-700 mt-1">${m.stageName}</div>
+            </div>
+
+            <div class="border border-slate-300 rounded-xl p-2 bg-slate-50">
+              <div class="text-[11px] font-bold text-slate-500 mb-1">战斗统计</div>
+              ${isDungeon ? `
+                <div class="grid grid-cols-2 gap-1.5">
+                  ${skillStats.map(sk => `
+                    <div class="flex items-center gap-1.5 text-xs font-extrabold">
+                      <span class="w-6 h-6 rounded-full border border-slate-400 bg-white flex items-center justify-center text-xs shrink-0">${sk.icon}</span>
+                      <span class="truncate">${sk.name}</span>
+                      <span class="text-slate-700 ml-auto tabular-nums">${fmtNum(sk.dmg)}</span>
+                    </div>
+                  `).join('')}
+                </div>
+              ` : `
+                <div class="grid grid-cols-2 gap-1.5">
+                  ${b.heroes.map(h => `
+                    <div class="flex items-center gap-1.5 text-xs font-extrabold">
+                      ${renderHeroAvatarSvg(h.key, 24)}
+                      <span class="truncate">${h.name}</span>
+                      <span class="text-slate-700 ml-auto tabular-nums">${fmtNum(h.dmg)}</span>
+                    </div>
+                  `).join('')}
+                </div>
+              `}
+            </div>
+
+            ${!isDungeon ? `
+              <div class="border border-slate-300 rounded-xl p-2.5 bg-amber-50/40 relative">
+                <div class="flex items-center justify-between text-xs font-bold mb-1">
+                  <span>本次战斗获得</span>
+                  <span class="text-[10px] ${state.monthCardActive ? 'text-amber-600' : 'text-slate-400'}">${state.monthCardActive ? '月卡特权生效中' : '未开通月卡'}</span>
+                </div>
+                <div class="text-[11px] font-bold text-slate-700 text-center">
+                  💎 ${fmtNum(m.baseGem)} × ${state.monthCardActive ? '120%' : '100%'} + 💎 ${fmtNum(m.bonusGem)} ${m.storedBonus > 0 ? `+ 宝箱(${fmtNum(m.storedBonus)})` : ''}
+                </div>
+                <div class="text-lg font-black text-rose-600 text-center mt-0.5">💎 ${fmtNum(m.totalGain)}</div>
+              </div>
+              ${m.isFirstClear ? `
+                <div class="border border-slate-300 rounded-xl p-2">
+                  <div class="text-[11px] font-bold text-slate-600 mb-1.5">首通奖励</div>
+                  <div class="grid grid-cols-3 gap-2">
+                    ${['🗡️ 武器箱', '💎 500', '📜 经验书'].map(it => `
+                      <div class="py-1.5 rounded-lg border border-slate-300 bg-slate-50 text-center text-[11px] font-bold">${it}</div>
+                    `).join('')}
+                  </div>
+                </div>
+              ` : ''}
+            ` : `
+              <div class="border border-slate-300 rounded-xl p-2.5">
+                <div class="text-[11px] font-bold text-slate-600 mb-2">通关奖励</div>
+                <div class="grid grid-cols-4 gap-2">
+                  ${[
+                    { icon: '🗡️', qty: 99 },
+                    { icon: '🛡️', qty: 99 },
+                    { icon: '🔮', qty: 99 },
+                    { icon: '📜', qty: 99 }
+                  ].map(it => `
+                    <div class="py-2 rounded-lg border border-slate-400 bg-slate-50 text-center flex flex-col items-center">
+                      <span class="text-base leading-none">${it.icon}</span>
+                      <span class="text-[11px] font-black text-slate-800 mt-1">${it.qty}</span>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            `}
+
+            <div class="flex flex-col items-center gap-2 pt-1">
+              ${!isDungeon ? `
+                <label class="inline-flex items-center gap-1.5 text-sm font-extrabold cursor-pointer">
+                  <input id="chk-loop-stage" type="checkbox" ${b.loopStage ? 'checked' : ''} class="w-4 h-4 accent-amber-500" />
+                  <span>循环本关</span>
+                </label>
+              ` : ''}
+              <div class="grid grid-cols-2 gap-3 w-full">
+                <button id="m-vic-next" class="py-2 rounded-xl border-2 border-slate-700 bg-amber-400 font-black text-sm hover:bg-amber-300">下一关</button>
+                <button id="m-vic-back" class="py-2 rounded-xl border-2 border-slate-500 bg-white font-bold text-sm hover:bg-slate-100">返回</button>
+              </div>
+              ${!isDungeon ? `
+                <div id="victory-auto-cd" class="text-xs font-bold text-slate-500">
+                  ${b.loopStage ? `${m.countdown}s后自动重新挑战` : `${m.countdown}s后自动下一关`}
+                </div>
+              ` : ''}
+            </div>
+          </div>
+        `;
+        const loopChk = document.getElementById('chk-loop-stage');
+        if (loopChk) {
+          loopChk.addEventListener('change', (e) => {
+            b.loopStage = e.target.checked;
+            const el = document.getElementById('victory-auto-cd');
+            if (el) {
+              el.textContent = b.loopStage
+                ? `${m.countdown}s后自动重新挑战`
+                : `${m.countdown}s后自动下一关`;
+            }
+          });
+        }
+        document.getElementById('m-vic-next').addEventListener('click', () => {
+          clearModalCountdown();
+          goToNextStageFromVictory();
+        });
+        document.getElementById('m-vic-back').addEventListener('click', () => exitBattleTo('substages'));
+      }
+      else if (m.type === 'ticket_source') {
+        mRoot.innerHTML = `
+          <div class="w-full max-w-xs bg-white text-slate-900 rounded-2xl p-5 shadow-2xl border-2 border-slate-700 text-center space-y-3">
+            <div class="text-3xl">🎫</div>
+            <h2 class="text-lg font-black">副本券获取途径（占位弹框）</h2>
+            <p class="text-xs text-slate-500">当前副本券不足（需要 1 张），可通过每日任务、商城或活动获取副本券。</p>
+            <div class="space-y-2 pt-1">
+              <button id="m-ticket-add" class="w-full py-2 rounded-xl bg-amber-400 border border-amber-600 text-slate-900 font-extrabold text-xs hover:bg-amber-300">+3 副本券（演示测试用）</button>
+              <button id="m-ticket-close" class="w-full py-2 rounded-xl bg-slate-800 text-white font-bold text-sm hover:bg-slate-700">关闭</button>
+            </div>
+          </div>
+        `;
+        document.getElementById('m-ticket-add').addEventListener('click', () => {
+          state.dungeonTickets += 3;
+          state.modal = null;
+          showToast('已补充 3 张副本券', 'success');
+          render();
+        });
+        document.getElementById('m-ticket-close').addEventListener('click', () => {
+          state.modal = null;
+          renderModal();
+        });
+      }
+      else if (m.type === 'arena_rule') {
+        mRoot.innerHTML = `
+          <div class="w-full max-w-xs bg-white text-slate-900 rounded-2xl p-5 shadow-2xl border-2 border-slate-700 space-y-3">
+            <h2 class="text-lg font-black text-center">竞技场规则说明</h2>
+            <div class="text-xs text-slate-600 space-y-1.5 leading-relaxed">
+              <div>1. 玩家根据当前段位与金币门槛匹配对应场次。</div>
+              <div>2. 对战胜利增加竞技分与竞技币，达到阈值自动升段；主动退出或战败将扣除竞技分。</div>
+              <div>3. 奖池按单场排名与表现最高可瓜分 12%。</div>
+            </div>
+            <button id="m-arule-close" class="w-full py-2 rounded-xl bg-slate-800 text-white font-bold text-sm">关闭</button>
+          </div>
+        `;
+        document.getElementById('m-arule-close').addEventListener('click', () => { state.modal = null; renderModal(); });
+      }
+      else if (m.type === 'arena_matching') {
+        mRoot.innerHTML = `
+          <div class="w-full max-w-xs bg-white text-slate-900 rounded-2xl p-6 shadow-2xl border-2 border-slate-700 text-center space-y-4">
+            <h2 class="text-xl font-black">匹配玩家中...</h2>
+            <div class="w-24 h-24 mx-auto rounded-2xl bg-gradient-to-br from-rose-200 to-rose-400 border-2 border-slate-700 flex items-center justify-center text-5xl animate-pulse">🔍</div>
+            <button id="m-match-cancel" class="px-6 py-2 rounded-xl border-2 border-slate-600 bg-white hover:bg-slate-100 font-bold text-sm">取消匹配</button>
+          </div>
+        `;
+        document.getElementById('m-match-cancel').addEventListener('click', () => {
+          clearModalCountdown();
+          state.modal = null;
+          renderModal();
+        });
+      }
+      else if (m.type === 'arena_exit_confirm') {
+        mRoot.innerHTML = `
+          <div class="w-full max-w-xs bg-white text-slate-900 rounded-2xl p-5 shadow-2xl border-2 border-slate-700 text-center space-y-3">
+            <h2 class="text-lg font-black text-rose-600">确认退出？</h2>
+            <p class="text-xs text-slate-600">现在退出战斗将直接判定本局失败并扣除竞技分，确定要退出吗？</p>
+            <div class="grid grid-cols-2 gap-3 pt-1">
+              <button id="m-aexit-cancel" class="py-2 rounded-xl border border-slate-400 bg-white font-bold text-sm">继续战斗</button>
+              <button id="m-aexit-ok" class="py-2 rounded-xl bg-rose-600 text-white font-bold text-sm">确认退出</button>
+            </div>
+          </div>
+        `;
+        document.getElementById('m-aexit-cancel').addEventListener('click', () => {
+          state.modal = null;
+          state.battle.paused = false;
+          renderModal();
+        });
+        document.getElementById('m-aexit-ok').addEventListener('click', () => triggerArenaSettlement(false));
+      }
+      else if (m.type === 'arena_settlement') {
+        const tierPct = Math.min(100, Math.round(((m.newPts - m.newTier.minPts) / Math.max(1, m.newTier.maxPts - m.newTier.minPts)) * 100));
+        mRoot.innerHTML = `
+          <div class="w-full bg-white text-slate-900 rounded-2xl p-4 shadow-2xl border-2 border-slate-700 space-y-3">
+            <h2 class="text-2xl font-black text-center ${m.isWin ? 'text-amber-500' : 'text-slate-400'}">${m.isWin ? '挑战胜利' : '挑战失败'}</h2>
+
+            <!-- 蓝红双方对比条 -->
+            <div class="flex h-11 rounded-xl overflow-hidden border-2 border-slate-700 text-xs font-black">
+              <div class="${m.isWin ? 'w-3/5' : 'w-2/5'} bg-cyan-300 flex items-center justify-center gap-1.5 px-2">
+                <span class="w-7 h-7 rounded-full bg-white border border-slate-600 flex items-center justify-center">😎</span>
+                <span class="truncate">我方</span>
+              </div>
+              <div class="${m.isWin ? 'w-2/5' : 'w-3/5'} bg-rose-400 text-white flex items-center justify-center gap-1.5 px-2">
+                <span class="w-7 h-7 rounded-full bg-white text-slate-800 border border-slate-600 flex items-center justify-center">😈</span>
+                <span class="truncate">${m.oppName}</span>
+              </div>
+            </div>
+
+            <!-- 竞技奖励与段位变化 -->
+            <div class="border border-slate-400 rounded-xl p-3 bg-slate-50 space-y-2">
+              <div class="text-xs font-extrabold text-slate-700">竞技奖励</div>
+              <div class="flex items-center justify-center gap-1.5 flex-wrap">
+                <span class="text-base">${m.oldTier.icon}</span>
+                <div class="w-24 h-4 bg-white border border-slate-500 rounded overflow-hidden relative">
+                  <div class="h-full bg-amber-300" style="width:${tierPct}%"></div>
+                  <div class="absolute inset-0 flex items-center justify-center text-[10px] font-black">${m.newPts}/${m.newTier.maxPts}</div>
+                </div>
+                <span class="text-xs font-black ${m.delta >= 0 ? 'text-emerald-600' : 'text-rose-600'}">${m.delta >= 0 ? `+${m.delta}` : m.delta}</span>
+                ${m.tierChanged ? `<span class="text-lime-600 font-black">➜</span><span class="text-xs font-black text-slate-900">${m.newTier.icon} ${m.newTier.name}</span>` : ''}
+              </div>
+              <div class="flex justify-center">
+                <div class="px-3 py-1.5 rounded-lg border border-slate-400 bg-white text-center">
+                  <div class="text-[11px] font-bold">🪙 竞技币</div>
+                  <div class="text-xs font-black text-amber-600">${m.coinGain}</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3 pt-1">
+              <button id="m-aset-next" class="py-2 rounded-xl border-2 border-slate-700 bg-amber-400 font-black text-sm hover:bg-amber-300">继续匹配</button>
+              <button id="m-aset-back" class="py-2 rounded-xl border-2 border-slate-500 bg-white font-bold text-sm hover:bg-slate-100">返回</button>
+            </div>
+          </div>
+        `;
+        document.getElementById('m-aset-next').addEventListener('click', () => {
+          const room = state.battle ? state.battle.roomType : 'mid';
+          state.battle = null;
+          state.screen = 'arena_lobby';
+          render();
+          openArenaMatching(room);
+        });
+        document.getElementById('m-aset-back').addEventListener('click', () => exitBattleTo('arena_lobby'));
+      }
+      else if (m.type === 'arena_rank') {
+        const isRewardTab = m.tab === 'reward';
+        const myTier = getArenaTier();
+        mRoot.innerHTML = `
+          <div class="w-full bg-white text-slate-900 rounded-2xl p-3.5 shadow-2xl border-2 border-slate-700 flex flex-col max-h-[82vh]">
+            <div class="flex items-center justify-between mb-2">
+              <div class="w-6"></div>
+              <h2 class="text-xl font-black">${isRewardTab ? '竞技榜奖励' : '竞技排行榜'}</h2>
+              <button id="m-arank-close" class="w-7 h-7 rounded-lg bg-rose-500 text-white font-black text-sm">✕</button>
+            </div>
+
+            <div class="flex-1 overflow-y-auto space-y-1.5 pr-0.5 no-scrollbar">
+              ${!isRewardTab ? [1, 2, 3, 4, 5].map(rank => `
+                <div class="flex items-center justify-between border border-slate-400 rounded-lg px-2.5 py-1.5 text-xs">
+                  <div class="flex items-center gap-2">
+                    <span class="w-6 h-6 rounded-full border border-slate-500 flex items-center justify-center font-black">${rank}</span>
+                    <span class="w-8 h-8 rounded border border-slate-400 bg-slate-100 flex items-center justify-center">😎</span>
+                    <span class="font-bold">菠萝五个字</span>
+                  </div>
+                  <div class="text-right text-[11px] font-bold">
+                    <div>至尊巅峰25阶</div>
+                    <div class="text-slate-500">${100000 - rank * 120}</div>
+                  </div>
+                </div>
+              `).join('') : `
+                <div class="grid grid-cols-4 border border-slate-400 text-[11px] font-bold text-center bg-slate-100 py-1">
+                  <div>排名</div><div class="col-span-3">奖励</div>
+                </div>
+                ${[
+                  { r: '1', items: ['🪙 999W', '💎 999W', '👑 称号'] },
+                  { r: '2', items: ['🪙 500W', '💎 100W', '👑 称号'] },
+                  { r: '3', items: ['🪙 100W', '💎 50W', '👑 称号'] },
+                  { r: '4-10', items: ['🪙 50W', '💎 5W'] }
+                ].map(row => `
+                  <div class="flex items-center justify-between border border-slate-400 rounded-lg px-2.5 py-2 text-xs">
+                    <span class="px-2 py-0.5 rounded-full border border-slate-400 font-black">${row.r}</span>
+                    <div class="flex gap-1.5">${row.items.map(it => `<span class="px-2 py-1 rounded border border-slate-300 bg-slate-50 text-[10px] font-bold">${it}</span>`).join('')}</div>
+                  </div>
+                `).join('')}
+              `}
+            </div>
+
+            <!-- 底部吸底本人栏 -->
+            <div class="mt-2 bg-amber-200/80 border border-amber-500 rounded-lg px-2.5 py-1.5 flex items-center justify-between text-xs font-extrabold">
+              <div class="flex items-center gap-2">
+                <span class="w-6 h-6 rounded-full bg-white border border-slate-500 flex items-center justify-center">75</span>
+                ${!isRewardTab ? '<span>我方（当前）</span>' : '<span>当前排名预期奖励</span>'}
+              </div>
+              <div class="text-right text-[11px]">
+                ${!isRewardTab ? `<div>${myTier.name}</div><div>${state.arena.points}</div>` : '<span>🪙 金币 20W</span>'}
+              </div>
+            </div>
+
+            <div class="flex justify-end gap-1.5 mt-2">
+              <button id="m-arank-tab-rank" class="px-4 py-1 rounded-lg border border-slate-600 text-xs font-extrabold ${!isRewardTab ? 'bg-amber-300' : 'bg-white'}">排行</button>
+              <button id="m-arank-tab-reward" class="px-4 py-1 rounded-lg border border-slate-600 text-xs font-extrabold ${isRewardTab ? 'bg-amber-300' : 'bg-white'}">奖励</button>
+            </div>
+          </div>
+        `;
+        document.getElementById('m-arank-close').addEventListener('click', () => { state.modal = null; renderModal(); });
+        document.getElementById('m-arank-tab-rank').addEventListener('click', () => { state.modal.tab = 'rank'; renderModal(); });
+        document.getElementById('m-arank-tab-reward').addEventListener('click', () => { state.modal.tab = 'reward'; renderModal(); });
+      }
+      else if (m.type === 'arena_shop') {
+        mRoot.innerHTML = `
+          <div class="w-full bg-amber-50 text-slate-900 rounded-2xl p-3.5 shadow-2xl border-2 border-slate-700 flex flex-col max-h-[82vh]">
+            <div class="flex items-center justify-between mb-2">
+              <div class="bg-slate-800 text-amber-300 px-2.5 py-1 rounded-full text-xs font-black">🪙 ${fmtNum(state.arena.coins)}</div>
+              <h2 class="text-base font-black text-slate-800">竞技场商店</h2>
+              <button id="m-ashop-close" class="w-7 h-7 rounded-lg bg-rose-500 text-white font-black text-sm">✕</button>
+            </div>
+            <div class="flex-1 overflow-y-auto grid grid-cols-3 gap-2 py-1 no-scrollbar">
+              ${state.arena.shopItems.map(it => {
+                const unlocked = state.arena.tierIndex >= it.reqTier;
+                const reqTierObj = getArenaTier(it.reqTier);
+                return `
+                  <button data-shop-buy="${it.id}" class="relative rounded-xl border-2 ${unlocked ? (it.quality === 'purple' ? 'border-purple-400 bg-purple-50' : 'border-sky-400 bg-sky-50') : 'border-slate-500 bg-slate-300/80'} p-1.5 flex flex-col items-center text-center transition active:scale-95">
+                    ${!unlocked ? '<span class="absolute top-1 right-1 text-xs">🔒</span>' : ''}
+                    <div class="text-[10px] font-extrabold text-slate-800 truncate w-full">${it.name}</div>
+                    <div class="text-2xl my-1">${it.icon}</div>
+                    <div class="text-[9px] font-bold text-slate-600">每日限购(${it.limit}/${it.maxLimit})</div>
+                    ${unlocked ? `
+                      <div class="mt-1 w-full py-0.5 rounded bg-slate-800 text-amber-300 text-[10px] font-black">${it.limit > 0 ? `🪙 ${it.price}` : '已售罄'}</div>
+                    ` : `
+                      <div class="mt-1 w-full py-0.5 rounded bg-slate-700 text-white text-[9px] font-bold">${reqTierObj.icon}${reqTierObj.name}解锁</div>
+                    `}
+                  </button>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        `;
+        document.getElementById('m-ashop-close').addEventListener('click', () => { state.modal = null; renderModal(); });
+        mRoot.querySelectorAll('[data-shop-buy]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const it = state.arena.shopItems.find(x => x.id === btn.getAttribute('data-shop-buy'));
+            if (!it) return;
+            if (state.arena.tierIndex < it.reqTier) {
+              showToast(`需达到「${getArenaTier(it.reqTier).name}」解锁`, 'warn');
+              return;
+            }
+            if (it.limit <= 0) { showToast('今日限购已用完'); return; }
+            if (state.arena.coins < it.price) { showToast('竞技币不足', 'warn'); return; }
+            state.arena.coins -= it.price;
+            it.limit--;
+            showToast(`兑换成功：${it.name} x${it.qty}`, 'success');
+            renderModal();
+          });
+        });
+      }
+      else if (m.type === 'arena_tier_rewards') {
+        const list = [...state.arena.tiers].reverse();
+        mRoot.innerHTML = `
+          <div class="w-full bg-amber-50 text-slate-900 rounded-2xl p-3.5 shadow-2xl border-2 border-slate-700 flex flex-col max-h-[82vh]">
+            <div class="flex items-center justify-between mb-2">
+              <div class="w-7"></div>
+              <h2 class="text-base font-black text-slate-800">段位奖励</h2>
+              <button id="m-atier-close" class="w-7 h-7 rounded-lg bg-rose-500 text-white font-black text-sm">✕</button>
+            </div>
+            <div class="flex-1 overflow-y-auto space-y-2 pr-0.5 no-scrollbar">
+              ${list.map(t => {
+                const reached = state.arena.tierIndex >= t.id;
+                const canClaim = reached && !t.claimed;
+                return `
+                  <div class="flex items-center gap-2">
+                    <div class="w-16 flex flex-col items-center shrink-0">
+                      <div class="w-9 h-9 rounded-full border-2 ${reached ? 'border-amber-500 bg-amber-100' : 'border-slate-400 bg-slate-200'} flex items-center justify-center text-lg">${t.icon}</div>
+                      <span class="text-[10px] font-black text-slate-800 mt-0.5">${t.name}</span>
+                    </div>
+                    <div class="flex-1 rounded-xl border ${t.claimed ? 'border-amber-400 bg-amber-100/60' : 'border-slate-300 bg-white'} p-2 flex items-center justify-between gap-2">
+                      <div>
+                        <div class="flex items-center gap-1">
+                          ${t.reward.map(rw => `<span class="px-1.5 py-0.5 rounded bg-sky-50 border border-sky-300 text-[10px] font-bold">${rw.icon}${rw.qty}</span>`).join('')}
+                        </div>
+                        ${t.buff ? `<div class="text-[10px] font-extrabold text-emerald-600 mt-1">${t.buff}</div>` : ''}
+                      </div>
+                      <button data-claim-tier="${t.id}" class="px-3 py-1.5 rounded-lg text-[11px] font-black shrink-0 ${t.claimed ? 'border border-emerald-500 text-emerald-700 bg-white' : canClaim ? 'bg-amber-400 border-2 border-amber-600 text-slate-900 animate-pulse' : 'bg-slate-300 text-slate-600'}">
+                        ${t.claimed ? '已领取' : canClaim ? '领取' : '未达成'}
+                      </button>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        `;
+        document.getElementById('m-atier-close').addEventListener('click', () => { state.modal = null; render(); });
+        mRoot.querySelectorAll('[data-claim-tier]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const t = state.arena.tiers.find(x => x.id === Number(btn.getAttribute('data-claim-tier')));
+            if (!t) return;
+            if (t.claimed) return;
+            if (state.arena.tierIndex < t.id) { showToast(`达到「${t.name}」后可领取`); return; }
+            t.claimed = true;
+            t.reward.forEach(rw => {
+              if (rw.name === '竞技币') state.arena.coins += rw.qty;
+              if (rw.name === '钻石') state.redGem += rw.qty;
+            });
+            showToast(`已领取「${t.name}」段位奖励`, 'success');
+            renderModal();
+          });
+        });
+      }
+      else if (m.type === 'arena_history') {
+        const pageSize = 6;
+        const page = state.arena.historyPage || 1;
+        const totalPages = Math.max(1, Math.ceil(state.arena.history.length / pageSize));
+        const slice = state.arena.history.slice((page - 1) * pageSize, page * pageSize);
+        mRoot.innerHTML = `
+          <div class="w-full bg-white text-slate-900 rounded-2xl p-3.5 shadow-2xl border-2 border-slate-700 flex flex-col max-h-[82vh]">
+            <div class="flex items-center justify-between mb-2">
+              <div class="w-7"></div>
+              <h2 class="text-xl font-black">对战记录</h2>
+              <button id="m-ahist-close" class="w-7 h-7 rounded-lg bg-rose-500 text-white font-black text-sm">✕</button>
+            </div>
+            <div class="flex-1 overflow-y-auto space-y-1.5 no-scrollbar">
+              ${slice.map(rec => `
+                <div class="border border-slate-400 rounded-lg px-2.5 py-1.5 flex items-center justify-between text-xs">
+                  <div>
+                    <div class="text-[10px] font-bold text-slate-500">${rec.room}</div>
+                    <div class="font-extrabold">${rec.date} <span class="${rec.win ? 'text-emerald-600' : 'text-rose-600'}">${rec.win ? '胜' : '败'}</span></div>
+                  </div>
+                  <div class="flex items-center gap-1.5">
+                    <span class="w-7 h-7 rounded border border-slate-400 bg-slate-100 flex items-center justify-center">😈</span>
+                    <div>
+                      <div class="font-bold">${rec.oppName}</div>
+                      <div class="text-[10px] text-slate-500">战力: ${rec.oppPower}</div>
+                    </div>
+                  </div>
+                  <div class="font-black ${rec.delta >= 0 ? 'text-emerald-600' : 'text-rose-600'}">
+                    ${rec.delta >= 0 ? `+${rec.delta} ⬆` : `${rec.delta} ⬇`}
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+            <div class="flex items-center justify-center gap-3 pt-2 text-xs font-bold">
+              ${page > 1 ? '<button id="m-ahist-prev" class="px-2.5 py-1 rounded border border-slate-400">上一页</button>' : ''}
+              <span>${page} / ${totalPages}</span>
+              ${page < totalPages ? '<button id="m-ahist-next" class="px-2.5 py-1 rounded border border-slate-400">下一页</button>' : ''}
+            </div>
+          </div>
+        `;
+        document.getElementById('m-ahist-close').addEventListener('click', () => { state.modal = null; renderModal(); });
+        const prev = document.getElementById('m-ahist-prev');
+        const next = document.getElementById('m-ahist-next');
+        if (prev) prev.addEventListener('click', () => { state.arena.historyPage--; renderModal(); });
+        if (next) next.addEventListener('click', () => { state.arena.historyPage++; renderModal(); });
+      }
+      else if (m.type === 'pool_rule') {
+        mRoot.innerHTML = `
+          <div class="w-full max-w-xs bg-white text-slate-900 rounded-2xl p-5 shadow-2xl border-2 border-slate-700 space-y-3">
+            <h2 class="text-lg font-black text-center">奖池场规则说明</h2>
+            <div class="text-xs text-slate-600 space-y-1.5 leading-relaxed">
+              <div>1. 同屏双人共战刷怪，击破高价值目标或开启狂暴/锁定提升爆奖率。</div>
+              <div>2. 可随时向对手发起「邀请PK」，双方在 30 秒内争夺中央扭蛋机奖池。</div>
+              <div>3. 战斗中阵亡可消耗 1000 金币立即复活继续战斗。</div>
+            </div>
+            <button id="m-prule-close" class="w-full py-2 rounded-xl bg-slate-800 text-white font-bold text-sm">关闭</button>
+          </div>
+        `;
+        document.getElementById('m-prule-close').addEventListener('click', () => { state.modal = null; renderModal(); });
+      }
+      else if (m.type === 'pool_pk_waiting') {
+        mRoot.innerHTML = `
+          <div class="w-full max-w-xs bg-white text-slate-900 rounded-2xl p-5 shadow-2xl border-2 border-slate-700 text-center space-y-4">
+            <h2 class="text-xl font-black">PK邀请中</h2>
+            <p class="text-sm font-bold text-slate-800">等待玩家[寂寞的雪糕]接收邀请中</p>
+            <div id="pk-wait-cd" class="text-xs text-slate-500">${m.countdown}s后对方未接受，本次邀请结束</div>
+          </div>
+        `;
+      }
+      else if (m.type === 'pool_pk_receive') {
+        mRoot.innerHTML = `
+          <div class="w-full max-w-xs bg-white text-slate-900 rounded-2xl p-5 shadow-2xl border-2 border-slate-700 text-center space-y-3">
+            <h2 class="text-xl font-black">PK邀请</h2>
+            <p class="text-sm font-bold text-slate-800">玩家[寂寞的雪糕]向您申请PK邀请，是否接受?</p>
+            <div class="grid grid-cols-2 gap-3 pt-1">
+              <button id="m-pk-accept" class="py-2 rounded-xl border-2 border-slate-700 bg-amber-400 font-black text-sm hover:bg-amber-300">接受</button>
+              <button id="m-pk-reject" class="py-2 rounded-xl border-2 border-slate-500 bg-white font-bold text-sm hover:bg-slate-100">拒绝</button>
+            </div>
+            <div id="pk-recv-cd" class="text-xs text-slate-500">${m.countdown}s后未选择则自动拒绝</div>
+          </div>
+        `;
+        document.getElementById('m-pk-accept').addEventListener('click', () => {
+          clearModalCountdown();
+          state.modal = null;
+          activatePoolPk();
+          showToast('已接受PK邀请！扭蛋机争夺开始', 'success');
+          render();
+        });
+        document.getElementById('m-pk-reject').addEventListener('click', () => {
+          clearModalCountdown();
+          state.modal = null;
+          showToast('已拒绝PK邀请');
+          renderModal();
+        });
+      }
+      else if (m.type === 'pool_pk_settlement') {
+        mRoot.innerHTML = `
+          <div class="w-full bg-white text-slate-900 rounded-2xl p-4 shadow-2xl border-2 border-slate-700 space-y-3">
+            <h2 class="text-2xl font-black text-center ${m.isWin ? 'text-amber-500' : 'text-slate-400'}">${m.isWin ? '挑战胜利' : '挑战失败'}</h2>
+            <div class="flex h-11 rounded-xl overflow-hidden border-2 border-slate-700 text-xs font-black">
+              <div class="${m.isWin ? 'w-3/5' : 'w-2/5'} bg-cyan-300 flex items-center justify-center gap-1.5 px-2">
+                <span class="w-7 h-7 rounded-full bg-white border border-slate-600 flex items-center justify-center">😎</span>
+                <span class="truncate">我方</span>
+              </div>
+              <div class="${m.isWin ? 'w-2/5' : 'w-3/5'} bg-rose-400 text-white flex items-center justify-center gap-1.5 px-2">
+                <span class="w-7 h-7 rounded-full bg-white text-slate-800 border border-slate-600 flex items-center justify-center">😈</span>
+                <span class="truncate">${m.oppName}</span>
+              </div>
+            </div>
+            ${m.isWin ? `
+              <div class="border border-slate-400 rounded-xl p-4 bg-slate-50">
+                <div class="text-xs font-extrabold text-slate-700 mb-2">征战奖励</div>
+                <div class="flex items-center justify-center gap-4">
+                  <span class="px-3 py-2 rounded-lg border border-slate-400 bg-white text-xs font-black">🪙 金币</span>
+                  <span class="text-xl font-black text-slate-900 tabular-nums">${fmtNum(m.rewardGold)}</span>
+                </div>
+              </div>
+            ` : `
+              <div class="py-6 text-center text-xl font-black text-slate-700">下次再接再厉</div>
+            `}
+            <div class="text-center space-y-1.5">
+              <button id="m-pk-settle-back" class="px-8 py-2 rounded-xl border-2 border-slate-600 bg-white font-bold text-sm hover:bg-slate-100">返回</button>
+              <div id="pk-settle-cd" class="text-xs text-slate-500">${m.countdown}s后自动关闭</div>
+            </div>
+          </div>
+        `;
+        document.getElementById('m-pk-settle-back').addEventListener('click', () => {
+          clearModalCountdown();
+          state.modal = null;
+          if (state.battle) state.battle.paused = false;
+          render();
+        });
+      }
+      else if (m.type === 'pool_revive') {
+        mRoot.innerHTML = `
+          <div class="w-full max-w-xs bg-white text-slate-900 rounded-2xl p-5 shadow-2xl border-2 border-slate-700 text-center space-y-4">
+            <h2 class="text-lg font-black">您已阵亡，是否立即复活?</h2>
+            <div class="grid grid-cols-2 gap-3">
+              <button id="m-previve-ok" class="py-2 rounded-xl border-2 border-slate-700 bg-amber-400 font-black text-xs hover:bg-amber-300 leading-tight">金币x1000<br>立即复活</button>
+              <button id="m-previve-quit" class="py-2 rounded-xl border-2 border-slate-500 bg-white font-bold text-sm hover:bg-slate-100">放弃退出</button>
+            </div>
+            <div id="pool-revive-cd" class="text-xs text-slate-500">${m.countdown}s后离场</div>
+          </div>
+        `;
+        document.getElementById('m-previve-ok').addEventListener('click', () => {
+          if (state.gold < 1000) { showToast('金币不足', 'warn'); return; }
+          state.gold -= 1000;
+          clearModalCountdown();
+          state.modal = null;
+          if (state.battle) {
+            state.battle.hp = state.battle.hpMax;
+            state.battle.paused = false;
+          }
+          showToast('消耗 1000 金币复活成功！', 'success');
+          render();
+        });
+        document.getElementById('m-previve-quit').addEventListener('click', () => {
+          clearModalCountdown();
+          exitBattleTo('pool_lobby');
+        });
+      }
+      else if (m.type === 'recharge_prompt') {
+        mRoot.innerHTML = `
+          <div class="w-full max-w-xs bg-white text-slate-900 rounded-2xl p-5 shadow-2xl border-2 border-slate-700 text-center space-y-3">
+            <div class="flex items-center justify-between">
+              <div class="w-6"></div>
+              <h2 class="text-lg font-black">金币充值</h2>
+              <button id="m-rech-close" class="w-7 h-7 rounded-lg bg-rose-500 text-white font-black text-sm">✕</button>
+            </div>
+            <div class="text-3xl">🪙</div>
+            <p class="text-xs text-slate-600">当前金币不足，无法满足「野兽岛」最低金币携带要求（100 金币）。</p>
+            <div class="space-y-2 pt-1">
+              <button id="m-rech-buy" class="w-full py-2.5 rounded-xl bg-amber-400 border-2 border-amber-600 text-slate-900 font-black text-xs hover:bg-amber-300">模拟充值 +10,000 金币</button>
+              <button id="m-rech-cancel" class="w-full py-2 rounded-xl border border-slate-400 bg-white text-slate-700 font-bold text-xs hover:bg-slate-100">关闭</button>
+            </div>
+          </div>
+        `;
+        const onCloseRecharge = () => {
+          if (state.dungeonTickets >= 1) {
+            state.modal = { type: 'dungeon_redirect_confirm', chapterId: m.chapterId };
+            renderModal();
+          } else {
+            state.modal = null;
+            renderModal();
+          }
+        };
+        document.getElementById('m-rech-close').addEventListener('click', onCloseRecharge);
+        document.getElementById('m-rech-cancel').addEventListener('click', onCloseRecharge);
+        document.getElementById('m-rech-buy').addEventListener('click', () => {
+          state.gold += 10000;
+          state.modal = null;
+          updateGoldDebugBtn();
+          showToast('充值成功 +10,000 金币', 'success');
+          render();
+        });
+      }
+      else if (m.type === 'dungeon_redirect_confirm') {
+        mRoot.innerHTML = `
+          <div class="w-full max-w-xs bg-white text-slate-900 rounded-2xl p-5 shadow-2xl border-2 border-slate-700 text-center space-y-4">
+            <h2 class="text-2xl font-black">副本挑战</h2>
+            <p class="text-sm font-black text-slate-800 leading-relaxed">
+              是否 <span class="inline-flex items-center justify-center w-5 h-5 rounded-full border border-slate-700 bg-slate-100 text-[11px] font-black align-middle">券</span> 消耗进入副本场<br>挑战关卡
+            </p>
+            <div class="inline-flex items-center gap-1.5 text-sm font-extrabold">
+              <span class="w-5 h-5 rounded-full border border-slate-700 bg-slate-100 text-[11px] font-black inline-flex items-center justify-center">券</span>
+              <span>剩余数：<span class="text-lime-600">${state.dungeonTickets}</span>/1</span>
+            </div>
+            <div class="grid grid-cols-2 gap-3 pt-1">
+              <button id="m-dred-go" class="py-2 rounded-xl border-2 border-slate-700 bg-white hover:bg-amber-50 font-extrabold text-sm">挑战</button>
+              <button id="m-dred-no" class="py-2 rounded-xl border-2 border-slate-500 bg-white hover:bg-slate-100 font-bold text-sm">暂不考虑</button>
+            </div>
+          </div>
+        `;
+        document.getElementById('m-dred-go').addEventListener('click', () => {
+          state.modal = null;
+          state.mode = 'dungeon';
+          state.selectedChapterId = m.chapterId || 'beast';
+          state.quickGoOpen = false;
+          state.screen = 'substages';
+          render();
+        });
+        document.getElementById('m-dred-no').addEventListener('click', () => {
+          state.modal = null;
+          renderModal();
+        });
+      }
+      else if (m.type === 'defeat') {
+        const b = state.battle;
+        mRoot.innerHTML = `
+          <div class="w-full bg-white text-slate-900 rounded-2xl p-4 shadow-2xl border-2 border-slate-700 space-y-3">
+            <div class="text-center">
+              <div class="inline-block bg-slate-700 text-white border-2 border-slate-900 px-6 py-1 rounded-xl text-xl font-black">挑战失败</div>
+              <div class="text-sm font-extrabold text-slate-700 mt-1">${m.stageName}</div>
+            </div>
+
+            <div class="border border-slate-300 rounded-xl p-2 bg-slate-50">
+              <div class="text-[11px] font-bold text-slate-500 mb-1">战斗统计</div>
+              <div class="grid grid-cols-2 gap-1.5">
+                ${b.heroes.map(h => `
+                  <div class="flex items-center gap-1.5 text-xs font-extrabold">
+                    ${renderHeroAvatarSvg(h.key, 24)}
+                    <span class="truncate">${h.name}</span>
+                    <span class="text-slate-700 ml-auto tabular-nums">${fmtNum(h.dmg)}</span>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+
+            <!-- 战力提升引导 -->
+            <div class="grid grid-cols-3 gap-2">
+              ${['英雄', '宝石', '装备'].map(up => `
+                <button data-upgrade-jump="${up}" class="relative py-2 rounded-xl border-2 border-slate-500 bg-white font-extrabold text-xs hover:bg-amber-50 active:scale-95 transition">
+                  <span class="absolute -top-2 -right-1 text-rose-600 text-sm font-black">⬆</span>
+                  ${up}
+                </button>
+              `).join('')}
+            </div>
+
+            ${b.mode !== 'dungeon' ? `
+              <div class="border border-slate-300 rounded-xl p-2.5 bg-rose-50/40 text-center">
+                <div class="flex items-center justify-between text-xs font-bold mb-1">
+                  <span>本次战斗获得</span>
+                  <span class="text-[10px] ${state.monthCardActive ? 'text-amber-600' : 'text-slate-400'}">${state.monthCardActive ? '月卡特权生效中' : '未开通月卡'}</span>
+                </div>
+                <div class="text-sm font-black text-rose-600">💎 ${fmtNum(m.baseGem)} × ${state.monthCardActive ? '120%' : '100%'}</div>
+                <div class="text-[11px] font-extrabold text-rose-700 mt-1">本次奖励已经存储40%（💎${fmtNum(m.storedAmount)}），下次挑战成功可领</div>
+              </div>
+            ` : ''}
+
+            <div class="border border-slate-300 rounded-xl p-2">
+              <div class="text-[11px] font-bold text-slate-600 mb-1">挑战奖励</div>
+              <div class="grid grid-cols-2 gap-2">
+                <div class="py-1.5 rounded-lg border border-slate-300 bg-slate-50 text-center text-[11px] font-bold">🪙 金币 +200</div>
+                <div class="py-1.5 rounded-lg border border-slate-300 bg-slate-50 text-center text-[11px] font-bold">📜 经验 +50</div>
+              </div>
+            </div>
+
+            <div class="text-center space-y-2">
+              <div class="grid grid-cols-2 gap-3">
+                <button id="m-def-retry" class="py-2 rounded-xl border-2 border-slate-700 bg-amber-400 font-black text-sm hover:bg-amber-300">再次挑战</button>
+                <button id="m-def-back" class="py-2 rounded-xl border-2 border-slate-500 bg-white font-bold text-sm hover:bg-slate-100">返回</button>
+              </div>
+              ${b.mode !== 'dungeon' ? `<div id="defeat-auto-cd" class="text-xs font-bold text-slate-500">${m.countdown}s后自动返回</div>` : ''}
+            </div>
+          </div>
+        `;
+        mRoot.querySelectorAll('[data-upgrade-jump]').forEach(btn => {
+          btn.addEventListener('click', () => exitBattleTo('placeholder', btn.getAttribute('data-upgrade-jump')));
+        });
+        document.getElementById('m-def-retry').addEventListener('click', () => startBattle(b.stageId));
+        document.getElementById('m-def-back').addEventListener('click', () => exitBattleTo('substages'));
+      }
+    }
+
+    // ==================== 控制台事件绑定 ====================
+    document.getElementById('btn-reset-demo').addEventListener('click', () => {
+      clearModalCountdown();
+      state = createInitialState();
+      showToast('原型数据已重置');
+      render();
+    });
+    document.getElementById('dbg-levelup').addEventListener('click', () => {
+      if ((state.screen === 'battle' || state.screen === 'arena_battle') && state.battle) openSkillChoiceModal();
+    });
+    document.getElementById('dbg-win').addEventListener('click', () => {
+      if (state.screen === 'battle' && state.battle) triggerVictory();
+      else if (state.screen === 'arena_battle' && state.battle) triggerArenaSettlement(true);
+      else if (state.screen === 'pool_battle' && state.battle) triggerPoolPkSettlement(true);
+    });
+    document.getElementById('dbg-lose').addEventListener('click', () => {
+      if (state.screen === 'battle' && state.battle) triggerDefeat();
+      else if (state.screen === 'arena_battle' && state.battle) triggerArenaSettlement(false);
+      else if (state.screen === 'pool_battle' && state.battle) triggerPoolPkSettlement(false);
+    });
+    document.getElementById('dbg-pk-receive').addEventListener('click', () => {
+      if (state.screen === 'pool_battle' && state.battle) openReceivePoolPkInvite();
+    });
+    document.getElementById('dbg-pool-die').addEventListener('click', () => {
+      if (state.screen === 'pool_battle' && state.battle) openPoolReviveModal();
+    });
+    function updateGoldDebugBtn() {
+      const btn = document.getElementById('dbg-toggle-gold');
+      if (btn) btn.textContent = `切换金币充足/不足（当前：${state.gold >= 100 ? '充足' : '不足'}）`;
+    }
+
+    document.getElementById('dbg-toggle-gold').addEventListener('click', () => {
+      state.gold = state.gold >= 100 ? 50 : 999999999;
+      updateGoldDebugBtn();
+      showToast(state.gold >= 100 ? '当前金币已设为充足' : '当前金币已设为不足 (50)', state.gold >= 100 ? 'success' : 'warn');
+      render();
+    });
+
+    document.getElementById('dbg-toggle-month').addEventListener('click', () => {
+      state.monthCardActive = !state.monthCardActive;
+      showToast(`月卡特权已${state.monthCardActive ? '开启 (120%)' : '关闭 (100%)'}`);
+      if (state.modal && (state.modal.type === 'victory' || state.modal.type === 'defeat')) renderModal();
+    });
+
+    // 启动
+    window.addEventListener('DOMContentLoaded', () => {
+      render();
+      startMainLoop();
+    });
+  </script>
+</body>
+</html>
