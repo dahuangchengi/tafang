@@ -58,7 +58,13 @@
     }
     .animate-float { animation: floatSlow 3.5s ease-in-out infinite; }
     .animate-cta { animation: pulseGlow 2s infinite; }
+    @keyframes bulletFly {
+      0% { opacity: 1; transform: translate(-50%, 0) scale(0.9); }
+      85% { opacity: 1; transform: translate(-50%, -145px) scale(1.1); }
+      100% { opacity: 0; transform: translate(-50%, -165px) scale(0.6); }
+    }
     .dmg-pop { animation: dmgFloat 0.75s ease-out forwards; }
+    .bullet-shot { animation: bulletFly 0.42s linear forwards; }
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
   </style>
@@ -216,10 +222,10 @@
           { name: '预设3', power: 1980, heroes: ['wind', 'ice', 'wind', 'thunder'] }
         ],
         heroMeta: {
-          wind:    { id: 'wind',    name: '风灵', color: '#4ade80', hat: '#22c55e', symbol: '🍃', baseDmg: 120, range: '中程扇形 (350)', rangeSize: 'w-44 h-44' },
-          fire:    { id: 'fire',    name: '烈焰', color: '#fb7185', hat: '#ef4444', symbol: '🔥', baseDmg: 165, range: '近战范围 (220)', rangeSize: 'w-32 h-32' },
-          ice:     { id: 'ice',     name: '冰瀑', color: '#60a5fa', hat: '#3b82f6', symbol: '❄️', baseDmg: 135, range: '远程直线 (450)', rangeSize: 'w-52 h-52' },
-          thunder: { id: 'thunder', name: '雷霆', color: '#facc15', hat: '#eab308', symbol: '⚡', baseDmg: 150, range: '全屏连锁 (500)', rangeSize: 'w-60 h-60' }
+          wind:    { id: 'wind',    name: '风灵', color: '#4ade80', hat: '#22c55e', symbol: '🍃', baseDmg: 120, range: '中程扇形 (350)', rangeSize: 'w-72 h-72' },
+          fire:    { id: 'fire',    name: '烈焰', color: '#fb7185', hat: '#ef4444', symbol: '🔥', baseDmg: 165, range: '近战范围 (220)', rangeSize: 'w-64 h-64' },
+          ice:     { id: 'ice',     name: '冰瀑', color: '#60a5fa', hat: '#3b82f6', symbol: '❄️', baseDmg: 135, range: '远程直线 (450)', rangeSize: 'w-80 h-80' },
+          thunder: { id: 'thunder', name: '雷霆', color: '#facc15', hat: '#eab308', symbol: '⚡', baseDmg: 150, range: '全屏连锁 (500)', rangeSize: 'w-[350px] h-[350px]' }
         },
         chapters: [
           { id: 'beast', name: '野兽岛', unlocked: true, chests: 9, atkRange: '100-500', goldRange: '100-500', bg: 'from-emerald-700 to-teal-900' },
@@ -251,6 +257,7 @@
 
     // ==================== 定时器管理 ====================
     let mainTickInterval = null;
+    let bulletTickInterval = null;
     let modalCountdownInterval = null;
     let arenaMatchTimeout = null;
 
@@ -327,7 +334,14 @@
           level: idx === 0 ? 3 : 1,
           enabled: true,
           dmg: 0,
-          affixes: idx === 0 ? ['风刃连射 +20%', '攻速提升 15%'] : ['基础射击']
+          affixes: idx === 0 ? [
+            { name: '召唤', icon: '⚡', desc: '伤害提升 <span class="text-emerald-600 font-black">30%</span>' },
+            { name: '风刃连射', icon: '🍃', desc: '连射伤害 <span class="text-emerald-600 font-black">+20%</span>' },
+            { name: '疾风骤雨', icon: '🌪️', desc: '攻速提升 <span class="text-emerald-600 font-black">15%</span>' },
+            { name: '暴击专精', icon: '💥', desc: '暴击率提升 <span class="text-emerald-600 font-black">12%</span>' }
+          ] : [
+            { name: '基础射击', icon: meta.symbol, desc: '造成 <span class="text-emerald-600 font-black">100%</span> 基础伤害' }
+          ]
         };
       });
 
@@ -366,9 +380,37 @@
       render();
     }
 
+    function spawnBattleBullets() {
+      const b = state.battle;
+      if (!b || b.paused || state.modal) return;
+      if (state.screen !== 'battle' && state.screen !== 'arena_battle' && state.screen !== 'pool_battle') return;
+      if (b.mode === 'pool' && b.autoAtk === false) return;
+      const arena = document.getElementById('battle-arena-fx');
+      if (!arena) return;
+
+      const tierScale = b.cannonTier >= 300 ? 1.45 : b.cannonTier >= 200 ? 1.2 : 1;
+      b.heroes.forEach((h, idx) => {
+        if (!h.enabled) return;
+        const meta = state.heroMeta[h.key];
+        const bullet = document.createElement('div');
+        bullet.className = 'bullet-shot pointer-events-none absolute bottom-2 rounded-full z-10';
+        bullet.style.left = `${20 + idx * 20}%`;
+        const size = Math.round(9 * tierScale);
+        bullet.style.width = `${size}px`;
+        bullet.style.height = `${Math.round(size * 1.6)}px`;
+        bullet.style.background = meta.color;
+        bullet.style.border = '1.5px solid #1e293b';
+        bullet.style.boxShadow = `0 0 8px ${meta.color}`;
+        arena.appendChild(bullet);
+        setTimeout(() => bullet.remove(), 440);
+      });
+    }
+
     // 主循环（1秒/次，用于大厅倒计时与战斗模拟）
     function startMainLoop() {
       if (mainTickInterval) clearInterval(mainTickInterval);
+      if (bulletTickInterval) clearInterval(bulletTickInterval);
+      bulletTickInterval = setInterval(spawnBattleBullets, 450);
       mainTickInterval = setInterval(() => {
         // 大厅活动与竞技场赛季倒计时
         state.activityTimers = state.activityTimers.map(t => (t > 0 ? t - 1 : 3600));
@@ -414,14 +456,9 @@
             }
           }
 
-          // 经验增长触发三选一
-          b.exp += 22;
-          if (b.exp >= b.expMax) {
-            b.exp = 0;
-            b.level++;
-            b.expMax = Math.round(b.expMax * 1.15);
-            openSkillChoiceModal();
-            return;
+          // 经验条缓慢累积（不自动弹窗，由右侧开关手动触发升级选技能）
+          if (b.exp < b.expMax) {
+            b.exp = Math.min(b.expMax, b.exp + 12);
           }
 
           renderBattleDynamicParts();
@@ -444,15 +481,10 @@
             b.oppHp = Math.max(0, b.oppHp - Math.round(tickDmg * 0.08));
             b.poolGold += Math.round(tickDmg * 1.2);
           }
-          // 敌方反击模拟
+          // 敌方反击模拟（经验不自动弹窗，由右侧开关手动触发）
           b.hp = Math.max(0, b.hp - Math.round(18 + Math.random() * 20));
-          b.exp += 22;
-          if (b.exp >= b.expMax) {
-            b.exp = 0;
-            b.level++;
-            b.expMax = Math.round(b.expMax * 1.15);
-            openSkillChoiceModal();
-            return;
+          if (b.exp < b.expMax) {
+            b.exp = Math.min(b.expMax, b.exp + 12);
           }
           if (b.oppHp <= 0) {
             triggerArenaSettlement(true);
@@ -569,8 +601,12 @@
       // 将词条写入对应英雄（若场上无该英雄则写入第一个槽位）
       const target = state.battle.heroes.find(h => h.key === card.targetHero) || state.battle.heroes[0];
       target.level++;
-      if (target.affixes.length >= 3) target.affixes.shift();
-      target.affixes.push(card.affix);
+      const cleanName = card.title.replace(/召唤|【|】/g, '') || card.title;
+      target.affixes.push({
+        name: card.isSummon ? '召唤' : cleanName,
+        icon: state.heroMeta[card.targetHero]?.symbol || '⚡',
+        desc: card.desc.replace(/(\d+%?)/g, '<span class="text-emerald-600 font-black">$1</span>')
+      });
 
       state.modal = null;
       state.battle.paused = false;
@@ -770,7 +806,14 @@
           level: idx === 0 ? 3 : 1,
           enabled: true,
           dmg: 0,
-          affixes: idx === 0 ? ['风刃连射 +20%', '攻速提升 15%'] : ['基础射击']
+          affixes: idx === 0 ? [
+            { name: '召唤', icon: '⚡', desc: '伤害提升 <span class="text-emerald-600 font-black">30%</span>' },
+            { name: '风刃连射', icon: '🍃', desc: '连射伤害 <span class="text-emerald-600 font-black">+20%</span>' },
+            { name: '疾风骤雨', icon: '🌪️', desc: '攻速提升 <span class="text-emerald-600 font-black">15%</span>' },
+            { name: '暴击专精', icon: '💥', desc: '暴击率提升 <span class="text-emerald-600 font-black">12%</span>' }
+          ] : [
+            { name: '基础射击', icon: meta.symbol, desc: '造成 <span class="text-emerald-600 font-black">100%</span> 基础伤害' }
+          ]
         };
       });
 
@@ -879,7 +922,14 @@
           level: idx === 0 ? 3 : 1,
           enabled: true,
           dmg: 0,
-          affixes: idx === 0 ? ['风刃连射 +20%', '攻速提升 15%'] : ['基础射击']
+          affixes: idx === 0 ? [
+            { name: '召唤', icon: '⚡', desc: '伤害提升 <span class="text-emerald-600 font-black">30%</span>' },
+            { name: '风刃连射', icon: '🍃', desc: '连射伤害 <span class="text-emerald-600 font-black">+20%</span>' },
+            { name: '疾风骤雨', icon: '🌪️', desc: '攻速提升 <span class="text-emerald-600 font-black">15%</span>' },
+            { name: '暴击专精', icon: '💥', desc: '暴击率提升 <span class="text-emerald-600 font-black">12%</span>' }
+          ] : [
+            { name: '基础射击', icon: meta.symbol, desc: '造成 <span class="text-emerald-600 font-black">100%</span> 基础伤害' }
+          ]
         };
       });
 
@@ -1039,6 +1089,14 @@
           exitBattleTo('pool_lobby');
         }
       }, 1000);
+    }
+
+    function renderRightHeroEnhanceBar(heroes) {
+      return `
+        <button id="btn-battle-details" class="mt-1.5 w-11 h-11 rounded-xl bg-white/95 hover:bg-amber-50 border-2 border-slate-600 text-slate-900 text-[10px] font-black leading-tight flex flex-col items-center justify-center shadow transition active:scale-95">
+          <span>📋</span><span>战斗<br>详情</span>
+        </button>
+      `;
     }
 
     // ==================== SVG 图标组件 ====================
@@ -1610,8 +1668,8 @@
           <!-- 战场中央动画与左右悬浮区 -->
           <div id="battle-arena-fx" class="flex-1 relative flex items-center justify-center overflow-hidden">
             ${activeAffixHero ? `
-              <div class="pointer-events-none absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/3 ${state.heroMeta[activeAffixHero.key].rangeSize} rounded-full border-2 border-dashed border-sky-500 bg-sky-400/20 flex items-start justify-center pt-3 z-0">
-                <span class="bg-sky-600/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow">${activeAffixHero.name} 攻击范围：${state.heroMeta[activeAffixHero.key].range}</span>
+              <div class="pointer-events-none absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/4 ${state.heroMeta[activeAffixHero.key].rangeSize} rounded-full border-[3px] border-dashed border-sky-500 bg-sky-400/25 shadow-[0_0_24px_rgba(56,189,248,0.35)] flex items-start justify-center pt-3 z-20">
+                <span class="bg-sky-600 text-white text-[10px] font-extrabold px-2.5 py-0.5 rounded-full shadow">${activeAffixHero.name} 攻击范围：${state.heroMeta[activeAffixHero.key].range}</span>
               </div>
             ` : ''}
             <!-- 模拟怪物波次 -->
@@ -1659,9 +1717,11 @@
                   </div>
                 </div>
               ` : ''}
-              <button id="btn-toggle-stats" class="w-11 h-11 rounded-xl bg-slate-800/90 border-2 border-amber-400 text-white text-[10px] font-bold flex flex-col items-center justify-center shadow">
+              <div class="flex flex-col items-end"><button id="btn-toggle-stats" class="w-11 h-11 rounded-xl bg-slate-800/90 border-2 border-amber-400 text-white text-[10px] font-bold flex flex-col items-center justify-center shadow">
                 <span>📊</span><span>统计</span>
               </button>
+                ${renderRightHeroEnhanceBar(b.heroes)}
+              </div>
             </div>
 
             <div class="absolute right-2 bottom-4 flex flex-col gap-2 z-10">
@@ -1688,22 +1748,7 @@
               </div>
             ` : ''}
 
-            <!-- 向上展开的词条气泡 -->
-            ${activeAffixHero ? `
-              <div class="mb-1.5 bg-white border-2 border-slate-700 rounded-xl p-2 shadow-xl">
-                <div class="flex items-center justify-between text-[11px] font-extrabold text-slate-700 border-b border-slate-200 pb-1 mb-1">
-                  <span>${activeAffixHero.name}（Lv.${activeAffixHero.level}）· <span class="text-sky-600">范围: ${state.heroMeta[activeAffixHero.key].range}</span></span>
-                  <button id="btn-close-affix" class="text-slate-400 hover:text-slate-700">✕</button>
-                </div>
-                <div class="space-y-1">
-                  ${[0, 1, 2].map(i => `
-                    <div class="text-[11px] px-2 py-1 rounded bg-slate-100 border border-slate-300 font-semibold text-slate-800">
-                      词条${i+1}：${activeAffixHero.affixes[i] || '（暂无）'}
-                    </div>
-                  `).join('')}
-                </div>
-              </div>
-            ` : ''}
+
 
             <div class="flex items-center gap-2">
               <button id="btn-hero-switch-entry" class="w-12 h-11 rounded-full border-2 ${b.switchListOpen ? 'bg-amber-400 border-amber-600' : 'bg-white border-slate-600'} text-xs font-extrabold shadow shrink-0">开关</button>
@@ -1816,11 +1861,12 @@
           render();
         });
       });
-      const closeAffix = document.getElementById('btn-close-affix');
-      if (closeAffix) {
-        closeAffix.addEventListener('click', () => {
-          b.activeAffixSlot = null;
-          render();
+      const detailsBtn = document.getElementById('btn-battle-details');
+      if (detailsBtn) {
+        detailsBtn.addEventListener('click', () => {
+          b.paused = true;
+          state.modal = { type: 'hero_selected_cards', slot: 1 };
+          renderModal();
         });
       }
       const cannonMinus = document.getElementById('btn-cannon-minus');
@@ -2151,8 +2197,8 @@
               <!-- 己方战场 + 统计 + 骰子/技能 -->
               <div id="battle-arena-fx" class="h-56 relative flex items-center justify-center rounded-xl bg-white/50 border border-sky-200 mb-2 overflow-hidden">
                 ${activeAffixHero ? `
-                  <div class="pointer-events-none absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/3 ${state.heroMeta[activeAffixHero.key].rangeSize} rounded-full border-2 border-dashed border-sky-500 bg-sky-400/20 flex items-start justify-center pt-3 z-0">
-                    <span class="bg-sky-600/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow">${activeAffixHero.name} 攻击范围：${state.heroMeta[activeAffixHero.key].range}</span>
+                  <div class="pointer-events-none absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/4 ${state.heroMeta[activeAffixHero.key].rangeSize} rounded-full border-[3px] border-dashed border-sky-500 bg-sky-400/25 shadow-[0_0_24px_rgba(56,189,248,0.35)] flex items-start justify-center pt-3 z-20">
+                <span class="bg-sky-600 text-white text-[10px] font-extrabold px-2.5 py-0.5 rounded-full shadow">${activeAffixHero.name} 攻击范围：${state.heroMeta[activeAffixHero.key].range}</span>
                   </div>
                 ` : ''}
 
@@ -2176,9 +2222,11 @@
                       </div>
                     </div>
                   ` : ''}
-                  <button id="btn-toggle-stats" class="w-11 h-11 rounded-xl bg-slate-800/90 border-2 border-amber-400 text-white text-[10px] font-bold flex flex-col items-center justify-center shadow">
+                  <div class="flex flex-col items-end"><button id="btn-toggle-stats" class="w-11 h-11 rounded-xl bg-slate-800/90 border-2 border-amber-400 text-white text-[10px] font-bold flex flex-col items-center justify-center shadow">
                     <span>📊</span><span>统计</span>
                   </button>
+                ${renderRightHeroEnhanceBar(b.heroes)}
+              </div>
                 </div>
 
                 <div class="absolute right-2 bottom-2 flex flex-col gap-1.5 z-10">
@@ -2203,19 +2251,7 @@
                 </div>
               ` : ''}
 
-              ${activeAffixHero ? `
-                <div class="mb-1.5 bg-white border-2 border-slate-700 rounded-xl p-2 shadow-xl">
-                  <div class="flex items-center justify-between text-[11px] font-extrabold text-slate-700 border-b border-slate-200 pb-1 mb-1">
-                    <span>${activeAffixHero.name}（Lv.${activeAffixHero.level}）· <span class="text-sky-600">范围: ${state.heroMeta[activeAffixHero.key].range}</span></span>
-                    <button id="btn-close-affix" class="text-slate-400 hover:text-slate-700">✕</button>
-                  </div>
-                  <div class="space-y-1">
-                    ${[0, 1, 2].map(i => `
-                      <div class="text-[11px] px-2 py-1 rounded bg-slate-100 border border-slate-300 font-semibold text-slate-800">词条${i+1}：${activeAffixHero.affixes[i] || '（暂无）'}</div>
-                    `).join('')}
-                  </div>
-                </div>
-              ` : ''}
+
 
               <div class="flex items-center gap-2 mb-2">
                 <button id="btn-hero-switch-entry" class="w-12 h-11 rounded-full border-2 ${b.switchListOpen ? 'bg-amber-400 border-amber-600' : 'bg-white border-slate-600'} text-xs font-extrabold shadow shrink-0">开关</button>
@@ -2300,8 +2336,14 @@
           render();
         });
       });
-      const closeAffix = document.getElementById('btn-close-affix');
-      if (closeAffix) closeAffix.addEventListener('click', () => { b.activeAffixSlot = null; render(); });
+      const detailsBtn = document.getElementById('btn-battle-details');
+      if (detailsBtn) {
+        detailsBtn.addEventListener('click', () => {
+          b.paused = true;
+          state.modal = { type: 'hero_selected_cards', slot: 1 };
+          renderModal();
+        });
+      }
       document.getElementById('btn-cannon-minus').addEventListener('click', () => {
         if (b.cannonTier > 100) { b.cannonTier -= 100; render(); }
       });
@@ -2514,15 +2556,18 @@
           <!-- 中央战场（常规态 vs 扭蛋机PK争夺态） -->
           <div id="battle-arena-fx" class="flex-1 relative flex flex-col items-center justify-center p-2 overflow-hidden">
             ${activeAffixHero ? `
-              <div class="pointer-events-none absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/3 ${state.heroMeta[activeAffixHero.key].rangeSize} rounded-full border-2 border-dashed border-sky-500 bg-sky-400/20 flex items-start justify-center pt-3 z-0">
-                <span class="bg-sky-600/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow">${activeAffixHero.name} 攻击范围：${state.heroMeta[activeAffixHero.key].range}</span>
+              <div class="pointer-events-none absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/4 ${state.heroMeta[activeAffixHero.key].rangeSize} rounded-full border-[3px] border-dashed border-sky-500 bg-sky-400/25 shadow-[0_0_24px_rgba(56,189,248,0.35)] flex items-start justify-center pt-3 z-20">
+                <span class="bg-sky-600 text-white text-[10px] font-extrabold px-2.5 py-0.5 rounded-full shadow">${activeAffixHero.name} 攻击范围：${state.heroMeta[activeAffixHero.key].range}</span>
               </div>
             ` : ''}
 
-            <!-- 本局奖池框 -->
-            <div class="absolute right-2 top-2 bg-white/95 border border-slate-500 rounded-lg px-2 py-1 text-[10px] font-black shadow-xs z-10">
-              <div class="text-rose-600 tabular-nums">红钻 ${fmtNum(b.poolGem)}</div>
-              <div class="text-amber-600 tabular-nums">金币 ${fmtNum(b.poolGold)}</div>
+            <!-- 本局奖池框 + 右侧英雄强化列表 -->
+            <div class="absolute right-2 top-2 flex flex-col items-end z-10">
+              <div class="bg-white/95 border border-slate-500 rounded-lg px-2 py-1 text-[10px] font-black shadow-xs">
+                <div class="text-rose-600 tabular-nums">红钻 ${fmtNum(b.poolGem)}</div>
+                <div class="text-amber-600 tabular-nums">金币 ${fmtNum(b.poolGold)}</div>
+              </div>
+              ${renderRightHeroEnhanceBar(b.heroes)}
             </div>
 
             ${b.pkActive ? `
@@ -2568,17 +2613,7 @@
               </div>
             ` : ''}
 
-            ${activeAffixHero ? `
-              <div class="mb-1 bg-white border-2 border-slate-700 rounded-xl p-2 shadow-xl">
-                <div class="flex items-center justify-between text-[11px] font-extrabold text-slate-700 border-b border-slate-200 pb-1 mb-1">
-                  <span>${activeAffixHero.name}（Lv.${activeAffixHero.level}）· <span class="text-sky-600">范围: ${state.heroMeta[activeAffixHero.key].range}</span></span>
-                  <button id="btn-close-affix" class="text-slate-400 hover:text-slate-700">✕</button>
-                </div>
-                <div class="space-y-1">
-                  ${[0, 1, 2].map(i => `<div class="text-[11px] px-2 py-0.5 rounded bg-slate-100 border border-slate-300 font-semibold">词条${i+1}：${activeAffixHero.affixes[i] || '（暂无）'}</div>`).join('')}
-                </div>
-              </div>
-            ` : ''}
+
 
             <div class="flex items-center gap-2">
               <button id="btn-hero-switch-entry" class="w-11 h-10 rounded-full border-2 ${b.switchListOpen ? 'bg-amber-400 border-amber-600' : 'bg-white border-slate-600'} text-xs font-extrabold shadow shrink-0">开关</button>
@@ -2657,8 +2692,14 @@
           render();
         });
       });
-      const closeAffix = document.getElementById('btn-close-affix');
-      if (closeAffix) closeAffix.addEventListener('click', () => { b.activeAffixSlot = null; render(); });
+      const detailsBtn = document.getElementById('btn-battle-details');
+      if (detailsBtn) {
+        detailsBtn.addEventListener('click', () => {
+          b.paused = true;
+          state.modal = { type: 'hero_selected_cards', slot: 1 };
+          renderModal();
+        });
+      }
       document.getElementById('btn-cannon-minus').addEventListener('click', () => { if (b.cannonTier > 100) { b.cannonTier -= 100; render(); } });
       document.getElementById('btn-cannon-plus').addEventListener('click', () => { if (b.cannonTier < 300) { b.cannonTier += 100; render(); } });
     }
@@ -2714,7 +2755,7 @@
         mRoot.innerHTML = '';
         return;
       }
-      mRoot.classList.remove('hidden');
+      mRoot.className = 'absolute inset-0 z-40 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-4';
       const m = state.modal;
 
       if (m.type === 'pause') {
@@ -3413,6 +3454,54 @@
           renderModal();
         });
       }
+      else if (m.type === 'hero_selected_cards') {
+        const b = state.battle;
+        const hero = b && (b.heroes.find(h => h.slot === m.slot) || b.heroes[0]);
+        if (!hero) { state.modal = null; renderModal(); return; }
+        mRoot.className = 'absolute inset-0 z-40 bg-slate-950/35 flex items-center justify-center p-3.5';
+        mRoot.innerHTML = `
+          <div class="w-full bg-white/90 backdrop-blur-xs text-slate-900 rounded-2xl p-3.5 shadow-2xl border-2 border-slate-700 flex flex-col max-h-[82vh]">
+            <div class="flex items-center justify-between mb-2">
+              <div class="w-7"></div>
+              <h2 class="text-xl font-black text-slate-900">已选择词条</h2>
+              <button id="m-hcards-close" class="w-7 h-7 rounded-lg bg-rose-500 text-white font-black text-sm">✕</button>
+            </div>
+
+            <!-- 4 英雄切换头像 -->
+            <div class="flex items-center justify-center gap-2.5 mb-3">
+              ${b.heroes.map(h => `
+                <button data-switch-detail-hero="${h.slot}" class="flex flex-col items-center p-1 rounded-full border-2 ${h.slot === hero.slot ? 'border-amber-500 bg-amber-200 shadow-sm scale-105' : 'border-slate-400 bg-white hover:bg-slate-50'} transition">
+                  ${renderHeroAvatarSvg(h.key, 30)}
+                </button>
+              `).join('')}
+            </div>
+
+            <!-- 4 列词条卡片网格 -->
+            <div class="flex-1 overflow-y-auto grid grid-cols-4 gap-1.5 pr-0.5 no-scrollbar content-start">
+              ${hero.affixes.map(af => `
+                <div class="rounded-lg border border-slate-500 bg-white overflow-hidden flex flex-col shadow-xs min-h-[96px]">
+                  <div class="bg-slate-100 border-b border-slate-300 text-[10px] font-black text-slate-900 text-center py-1 px-0.5 truncate">${af.name}</div>
+                  <div class="flex-1 p-1.5 flex flex-col items-center justify-center text-center gap-1">
+                    <span class="text-sm leading-none">${af.icon}</span>
+                    <div class="text-[9px] font-bold text-slate-700 leading-tight">${af.desc}</div>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+        mRoot.querySelectorAll('[data-switch-detail-hero]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            state.modal.slot = Number(btn.getAttribute('data-switch-detail-hero'));
+            renderModal();
+          });
+        });
+        document.getElementById('m-hcards-close').addEventListener('click', () => {
+          state.modal = null;
+          if (state.battle) state.battle.paused = false;
+          renderModal();
+        });
+      }
       else if (m.type === 'defeat') {
         const b = state.battle;
         mRoot.innerHTML = `
@@ -3489,7 +3578,11 @@
       render();
     });
     document.getElementById('dbg-levelup').addEventListener('click', () => {
-      if ((state.screen === 'battle' || state.screen === 'arena_battle') && state.battle) openSkillChoiceModal();
+      if ((state.screen === 'battle' || state.screen === 'arena_battle' || state.screen === 'pool_battle') && state.battle) {
+        state.battle.level = (state.battle.level || 1) + 1;
+        state.battle.exp = 0;
+        openSkillChoiceModal();
+      }
     });
     document.getElementById('dbg-win').addEventListener('click', () => {
       if (state.screen === 'battle' && state.battle) triggerVictory();
