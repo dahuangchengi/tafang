@@ -335,12 +335,12 @@
           enabled: true,
           dmg: 0,
           affixes: idx === 0 ? [
-            { name: '召唤', icon: '⚡', desc: '伤害提升 <span class="text-emerald-600 font-black">30%</span>' },
-            { name: '风刃连射', icon: '🍃', desc: '连射伤害 <span class="text-emerald-600 font-black">+20%</span>' },
-            { name: '疾风骤雨', icon: '🌪️', desc: '攻速提升 <span class="text-emerald-600 font-black">15%</span>' },
-            { name: '暴击专精', icon: '💥', desc: '暴击率提升 <span class="text-emerald-600 font-black">12%</span>' }
+            { name: '疾风骤雨', icon: '🌪️', rarity: 2, selectedAt: 1, desc: '大幅强化英雄攻击节奏，整体攻击速度提升 <span class="text-emerald-600 font-black">15%</span>。' },
+            { name: '召唤', icon: '⚡', rarity: 3, selectedAt: 2, desc: '召唤强力英雄上阵作战，基础攻击伤害提升 <span class="text-emerald-600 font-black">30%</span>。' },
+            { name: '暴击专精', icon: '💥', rarity: 1, selectedAt: 3, desc: '精准锁定敌人弱点，暴击触发概率额外提升 <span class="text-emerald-600 font-black">12%</span>。' },
+            { name: '风刃连射', icon: '🍃', rarity: 2, selectedAt: 4, desc: '每次普通攻击额外发射 <span class="text-emerald-600 font-black">1</span> 道风刃，伤害提升 <span class="text-emerald-600 font-black">20%</span>。' }
           ] : [
-            { name: '基础射击', icon: meta.symbol, desc: '造成 <span class="text-emerald-600 font-black">100%</span> 基础伤害' }
+            { name: '基础射击', icon: meta.symbol, rarity: 1, selectedAt: 1, desc: '向正前方敌人发射元素弹幕，造成 <span class="text-emerald-600 font-black">100%</span> 基础伤害。' }
           ]
         };
       });
@@ -554,13 +554,19 @@
     }
 
     // ==================== 词条三选一弹窗 ====================
+    let affixSeqCounter = 100;
+    const RARITY_META = {
+      3: { label: '黄', headerCls: 'bg-amber-400 text-slate-900', borderCls: 'border-amber-500' },
+      2: { label: '紫', headerCls: 'bg-purple-500 text-white', borderCls: 'border-purple-500' },
+      1: { label: '蓝', headerCls: 'bg-sky-500 text-white', borderCls: 'border-sky-500' }
+    };
     const AFFIX_POOL = [
-      { title: '召唤【烈焰】', desc: '解锁或强化烈焰英雄参战', targetHero: 'fire', affix: '烈焰觉醒 +25% 伤害', isSummon: true },
-      { title: '【烈焰狂暴】', desc: '攻击伤害提升 30%', targetHero: 'fire', affix: '烈焰狂暴：攻击 +30%', isSummon: false },
-      { title: '召唤【冰瀑海】', desc: '释放冰霜领域减速并造成范围伤害', targetHero: 'ice', affix: '冰瀑海：范围减速', isSummon: true },
-      { title: '【雷霆连锁】', desc: '攻击额外弹射 2 个目标', targetHero: 'thunder', affix: '雷霆连锁 +2 目标', isSummon: false },
-      { title: '【疾风连射】', desc: '全队攻击速度提升 20%', targetHero: 'wind', affix: '疾风连射：攻速 +20%', isSummon: false },
-      { title: '【暴击强化】', desc: '暴击率提升 15%，暴伤 +40%', targetHero: 'wind', affix: '暴击率 +15%', isSummon: false }
+      { title: '召唤【烈焰】', rarity: 3, desc: '召唤烈焰英雄加入战场，释放火球造成150%伤害。', targetHero: 'fire', isSummon: true },
+      { title: '【烈焰狂暴】', rarity: 3, desc: '激发烈焰狂暴之力，自身攻击伤害永久提升30%。', targetHero: 'fire', isSummon: false },
+      { title: '召唤【冰瀑海】', rarity: 3, desc: '召唤冰瀑海释放寒潮，减速敌人并造成120%伤害。', targetHero: 'ice', isSummon: true },
+      { title: '【雷霆连锁】', rarity: 3, desc: '攻击命中后触发连锁闪电，额外弹射2个敌方目标。', targetHero: 'thunder', isSummon: false },
+      { title: '【疾风连射】', rarity: 2, desc: '引导疾风气流加速射击，全队攻击速度提升20%。', targetHero: 'wind', isSummon: false },
+      { title: '【暴击强化】', rarity: 2, desc: '提升全队暴击几率15%，并使暴击伤害额外增加40%。', targetHero: 'wind', isSummon: false }
     ];
 
     function rollThreeAffixes() {
@@ -602,9 +608,12 @@
       const target = state.battle.heroes.find(h => h.key === card.targetHero) || state.battle.heroes[0];
       target.level++;
       const cleanName = card.title.replace(/召唤|【|】/g, '') || card.title;
+      affixSeqCounter++;
       target.affixes.push({
         name: card.isSummon ? '召唤' : cleanName,
         icon: state.heroMeta[card.targetHero]?.symbol || '⚡',
+        rarity: card.rarity || 1,
+        selectedAt: affixSeqCounter,
         desc: card.desc.replace(/(\d+%?)/g, '<span class="text-emerald-600 font-black">$1</span>')
       });
 
@@ -807,12 +816,12 @@
           enabled: true,
           dmg: 0,
           affixes: idx === 0 ? [
-            { name: '召唤', icon: '⚡', desc: '伤害提升 <span class="text-emerald-600 font-black">30%</span>' },
-            { name: '风刃连射', icon: '🍃', desc: '连射伤害 <span class="text-emerald-600 font-black">+20%</span>' },
-            { name: '疾风骤雨', icon: '🌪️', desc: '攻速提升 <span class="text-emerald-600 font-black">15%</span>' },
-            { name: '暴击专精', icon: '💥', desc: '暴击率提升 <span class="text-emerald-600 font-black">12%</span>' }
+            { name: '疾风骤雨', icon: '🌪️', rarity: 2, selectedAt: 1, desc: '大幅强化英雄攻击节奏，整体攻击速度提升 <span class="text-emerald-600 font-black">15%</span>。' },
+            { name: '召唤', icon: '⚡', rarity: 3, selectedAt: 2, desc: '召唤强力英雄上阵作战，基础攻击伤害提升 <span class="text-emerald-600 font-black">30%</span>。' },
+            { name: '暴击专精', icon: '💥', rarity: 1, selectedAt: 3, desc: '精准锁定敌人弱点，暴击触发概率额外提升 <span class="text-emerald-600 font-black">12%</span>。' },
+            { name: '风刃连射', icon: '🍃', rarity: 2, selectedAt: 4, desc: '每次普通攻击额外发射 <span class="text-emerald-600 font-black">1</span> 道风刃，伤害提升 <span class="text-emerald-600 font-black">20%</span>。' }
           ] : [
-            { name: '基础射击', icon: meta.symbol, desc: '造成 <span class="text-emerald-600 font-black">100%</span> 基础伤害' }
+            { name: '基础射击', icon: meta.symbol, rarity: 1, selectedAt: 1, desc: '向正前方敌人发射元素弹幕，造成 <span class="text-emerald-600 font-black">100%</span> 基础伤害。' }
           ]
         };
       });
@@ -923,12 +932,12 @@
           enabled: true,
           dmg: 0,
           affixes: idx === 0 ? [
-            { name: '召唤', icon: '⚡', desc: '伤害提升 <span class="text-emerald-600 font-black">30%</span>' },
-            { name: '风刃连射', icon: '🍃', desc: '连射伤害 <span class="text-emerald-600 font-black">+20%</span>' },
-            { name: '疾风骤雨', icon: '🌪️', desc: '攻速提升 <span class="text-emerald-600 font-black">15%</span>' },
-            { name: '暴击专精', icon: '💥', desc: '暴击率提升 <span class="text-emerald-600 font-black">12%</span>' }
+            { name: '疾风骤雨', icon: '🌪️', rarity: 2, selectedAt: 1, desc: '大幅强化英雄攻击节奏，整体攻击速度提升 <span class="text-emerald-600 font-black">15%</span>。' },
+            { name: '召唤', icon: '⚡', rarity: 3, selectedAt: 2, desc: '召唤强力英雄上阵作战，基础攻击伤害提升 <span class="text-emerald-600 font-black">30%</span>。' },
+            { name: '暴击专精', icon: '💥', rarity: 1, selectedAt: 3, desc: '精准锁定敌人弱点，暴击触发概率额外提升 <span class="text-emerald-600 font-black">12%</span>。' },
+            { name: '风刃连射', icon: '🍃', rarity: 2, selectedAt: 4, desc: '每次普通攻击额外发射 <span class="text-emerald-600 font-black">1</span> 道风刃，伤害提升 <span class="text-emerald-600 font-black">20%</span>。' }
           ] : [
-            { name: '基础射击', icon: meta.symbol, desc: '造成 <span class="text-emerald-600 font-black">100%</span> 基础伤害' }
+            { name: '基础射击', icon: meta.symbol, rarity: 1, selectedAt: 1, desc: '向正前方敌人发射元素弹幕，造成 <span class="text-emerald-600 font-black">100%</span> 基础伤害。' }
           ]
         };
       });
@@ -2806,7 +2815,7 @@
                     ${state.heroMeta[c.targetHero].symbol}
                   </div>
                   <div class="text-[11px] font-extrabold text-slate-900 leading-tight mb-1">${c.title}</div>
-                  <div class="text-[10px] text-slate-600 leading-snug">${c.desc}</div>
+                  <div class="text-[10px] text-slate-600 leading-snug">${c.desc.replace(/(\d+%?)/g, '<span class="text-emerald-600 font-black">$1</span>')}</div>
                 </button>
               `).join('')}
             </div>
@@ -3476,17 +3485,22 @@
               `).join('')}
             </div>
 
-            <!-- 4 列词条卡片网格 -->
+            <!-- 4 列词条卡片网格（按稀有度从高到低，同级按选择时间先后） -->
             <div class="flex-1 overflow-y-auto grid grid-cols-4 gap-1.5 pr-0.5 no-scrollbar content-start">
-              ${hero.affixes.map(af => `
-                <div class="rounded-lg border border-slate-500 bg-white overflow-hidden flex flex-col shadow-xs min-h-[96px]">
-                  <div class="bg-slate-100 border-b border-slate-300 text-[10px] font-black text-slate-900 text-center py-1 px-0.5 truncate">${af.name}</div>
-                  <div class="flex-1 p-1.5 flex flex-col items-center justify-center text-center gap-1">
-                    <span class="text-sm leading-none">${af.icon}</span>
-                    <div class="text-[9px] font-bold text-slate-700 leading-tight">${af.desc}</div>
-                  </div>
-                </div>
-              `).join('')}
+              ${[...hero.affixes]
+                .sort((a, b) => (b.rarity - a.rarity) || (a.selectedAt - b.selectedAt))
+                .map(af => {
+                  const rm = RARITY_META[af.rarity || 1];
+                  return `
+                    <div class="rounded-lg border-2 ${rm.borderCls} bg-white overflow-hidden flex flex-col shadow-xs min-h-[108px]">
+                      <div class="${rm.headerCls} text-[10px] font-black text-center py-1 px-0.5 truncate">${af.name}</div>
+                      <div class="flex-1 p-1.5 flex flex-col items-center justify-start text-center gap-1">
+                        <span class="text-sm leading-none">${af.icon}</span>
+                        <div class="text-[9px] font-bold text-slate-700 leading-tight">${af.desc}</div>
+                      </div>
+                    </div>
+                  `;
+                }).join('')}
             </div>
           </div>
         `;
